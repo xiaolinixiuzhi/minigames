@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小游戏合集</title>
+<style>
+  :root{--bg:#0f1115;--card:#181b22;--line:#252a34;--fg:#e6e8ee;--dim:#8b93a1;--acc:#5b8cff}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+       min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:56px 20px}
+  h1{font-size:26px;font-weight:600;letter-spacing:.5px}
+  p.sub{color:var(--dim);font-size:14px;margin-top:8px}
+  .grid{display:grid;gap:18px;width:100%;max-width:820px;margin-top:36px;
+        grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  a.card{display:block;background:var(--card);border:1px solid var(--line);border-radius:14px;
+         padding:26px 24px;text-decoration:none;color:inherit;transition:.18s}
+  a.card:hover{border-color:var(--acc);transform:translateY(-3px)}
+  .tag{display:inline-block;font-size:12px;color:var(--acc);border:1px solid rgba(91,140,255,.35);
+       border-radius:999px;padding:2px 10px;margin-bottom:14px}
+  h2{font-size:19px;font-weight:600;margin-bottom:8px}
+  .desc{color:var(--dim);font-size:14px}
+  footer{margin-top:48px;color:#5d6470;font-size:12px;text-align:center;line-height:1.9}
+</style>
+</head>
+<body>
+  <h1>小游戏合集</h1>
+  <p class="sub">两个单文件网页游戏，纯前端，无需安装</p>
+
+  <div class="grid">
+    <a class="card" href="cs-career-simulator.html">
+      <span class="tag">模拟经营</span>
+      <h2>CS 职业人生模拟器</h2>
+      <p class="desc">从路人到职业选手：天赋分配、天梯磨炼、战队邀约、赛事奖金、直播涨粉，一局走完整个职业生涯。</p>
+    </a>
+    <a class="card" href="gaokao-simulator.html">
+      <span class="tag">文字模拟</span>
+      <h2>高考模拟器</h2>
+      <p class="desc">三年高中，一次次选择：刷题还是休息、竞赛还是高考，看看最后落在哪张录取通知上。</p>
+    </a>
+  </div>
+
+  <footer>
+    个人练习作品，仅供娱乐，非商业用途<br>
+    存档保存在浏览器本地（localStorage），换设备不通用
+  </footer>
+</body>
+</html>

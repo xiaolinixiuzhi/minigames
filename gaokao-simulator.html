@@ -1,0 +1,2806 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>高考模拟器</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg1:#0f0c29;--bg2:#302b63;--bg3:#24243e;
+  --card:rgba(255,255,255,0.06);--card-border:rgba(255,255,255,0.1);
+  --text:#e8e8f0;--text-dim:rgba(255,255,255,0.5);
+  --accent:#f6d365;--accent2:#fda085;
+  --good:#43e97b;--bad:#f5576c;--care:#a18cd1;
+  --timer-warn:#ff6b6b;
+}
+html,body{height:100%;font-family:'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif;background:linear-gradient(135deg,var(--bg1),var(--bg2),var(--bg3));color:var(--text);overflow:hidden}
+#app{height:100%;display:flex;align-items:center;justify-content:center;padding:16px}
+.screen{display:none;width:100%;max-width:520px;animation:fadeIn .5s ease}
+.screen.active{display:flex;flex-direction:column;align-items:center}
+@keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-4px)}40%,80%{transform:translateX(4px)}}
+@keyframes glow{0%,100%{box-shadow:0 0 8px rgba(246,211,101,.3)}50%{box-shadow:0 0 20px rgba(246,211,101,.6)}}
+@keyframes breathe{0%,100%{opacity:.6}50%{opacity:1}}
+@keyframes slideUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+@keyframes timerPulse{0%,100%{transform:scale(1);color:var(--text)}50%{transform:scale(1.15);color:var(--timer-warn)}}
+
+body.phase-title{background:linear-gradient(135deg,#87CEEB 0%,#B0E0E6 40%,#E0F6FF 100%);position:relative;transition:background .8s ease}
+body.phase-title::before{content:'';position:fixed;top:0;left:0;right:0;bottom:0;background:radial-gradient(circle at 20% 30%,rgba(255,223,100,.15) 0%,transparent 50%),radial-gradient(circle at 80% 70%,rgba(255,255,255,.2) 0%,transparent 50%);pointer-events:none;z-index:0}
+
+body.phase-night{background:linear-gradient(135deg,#0a0818 0%,#151030 50%,#1a1540 100%);position:relative;transition:background .8s ease}
+body.phase-night::before{content:'';position:fixed;top:0;left:0;right:0;bottom:0;background:radial-gradient(ellipse at 50% 60%,rgba(246,211,101,.08) 0%,rgba(253,160,133,.03) 30%,transparent 70%);pointer-events:none;z-index:0}
+
+body.phase-question{background:linear-gradient(135deg,#87CEEB 0%,#A8D8EA 50%,#C8E6F0 100%);position:relative;transition:background .8s ease}
+body.phase-question::before{content:'';position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:0}
+
+body.phase-event{background:linear-gradient(135deg,#87CEEB 0%,#A8D8EA 50%,#C8E6F0 100%);position:relative;transition:background .8s ease}
+body.phase-event::before{content:'';position:fixed;top:0;left:0;right:0;bottom:0;background:linear-gradient(180deg,rgba(255,255,255,.1) 0%,transparent 50%);pointer-events:none;z-index:0}
+
+body.phase-care{background:linear-gradient(135deg,#FFE4C4 0%,#FFDAB9 40%,#FFD4A8 100%);position:relative;transition:background .8s ease}
+body.phase-care::before{content:'';position:fixed;top:0;left:0;right:0;bottom:0;background:radial-gradient(circle at 50% 50%,rgba(255,200,150,.2) 0%,transparent 70%);pointer-events:none;z-index:0}
+
+body.phase-ending{background:linear-gradient(135deg,#87CEEB 0%,#B0C4DE 40%,#C8D8E8 100%);position:relative;transition:background .8s ease}
+body.phase-ending::before{content:'';position:fixed;top:0;left:0;right:0;bottom:0;background:radial-gradient(circle at 50% 30%,rgba(255,223,100,.15) 0%,transparent 60%);pointer-events:none;z-index:0}
+
+body.time-morning.phase-question::before,body.time-morning.phase-event::before,body.time-morning.phase-subject_intro::before,body.time-morning.phase-subject_done::before{background:radial-gradient(ellipse at 30% 10%,rgba(255,223,100,.25) 0%,rgba(255,223,100,.1) 30%,transparent 70%),radial-gradient(ellipse at 70% 20%,rgba(255,240,200,.2) 0%,transparent 50%)}
+
+body.time-afternoon.phase-question::before,body.time-afternoon.phase-event::before,body.time-afternoon.phase-subject_intro::before,body.time-afternoon.phase-subject_done::before{background:radial-gradient(ellipse at 80% 15%,rgba(255,160,100,.3) 0%,rgba(255,180,100,.15) 30%,transparent 70%),radial-gradient(ellipse at 20% 40%,rgba(255,200,150,.15) 0%,transparent 50%)}
+
+body.time-morning.phase-question,body.time-morning.phase-event,body.time-morning.phase-subject_intro,body.time-morning.phase-subject_done{background:linear-gradient(135deg,#87CEEB 0%,#A8D8EA 40%,#E0F0FF 100%)}
+body.time-afternoon.phase-question,body.time-afternoon.phase-event,body.time-afternoon.phase-subject_intro,body.time-afternoon.phase-subject_done{background:linear-gradient(135deg,#FFB347 0%,#FFCC80 40%,#FFE0B2 100%)}
+
+body.phase-title,body.phase-question,body.phase-event,body.phase-care,body.phase-ending,body.phase-subject_intro,body.phase-subject_done{--text:#1a1a2e;--text-dim:rgba(0,0,0,0.55);--card:rgba(255,255,255,0.45);--card-border:rgba(255,255,255,0.5)}
+body.phase-title .btn-option,body.phase-question .btn-option,body.phase-event .btn-option,body.phase-care .btn-option,body.phase-ending .btn-option,body.phase-subject_intro .btn-option,body.phase-subject_done .btn-option{background:rgba(255,255,255,0.5);border-color:rgba(0,0,0,0.1);color:#1a1a2e}
+body.phase-title .btn-option:hover,body.phase-question .btn-option:hover,body.phase-event .btn-option:hover,body.phase-care .btn-option:hover,body.phase-ending .btn-option:hover,body.phase-subject_intro .btn-option:hover,body.phase-subject_done .btn-option:hover{background:rgba(255,255,255,0.7);border-color:var(--accent)}
+body.phase-title .btn-option.selected,body.phase-question .btn-option.selected,body.phase-event .btn-option.selected,body.phase-care .btn-option.selected,body.phase-ending .btn-option.selected{border-color:var(--accent);background:rgba(246,211,101,0.3)}
+body.phase-title .btn-primary,body.phase-question .btn-primary,body.phase-event .btn-primary,body.phase-care .btn-primary,body.phase-ending .btn-primary{color:#1a1a2e}
+body.phase-title h1,body.phase-question h1,body.phase-event h1,body.phase-care h1,body.phase-ending h1,body.phase-title h2,body.phase-question h2,body.phase-event h2,body.phase-care h2,body.phase-ending h2{background:linear-gradient(135deg,#d4a017,#e08040);-webkit-background-clip:text;background-clip:text}
+body.phase-title .pressure-bar-wrap,body.phase-question .pressure-bar-wrap,body.phase-event .pressure-bar-wrap,body.phase-care .pressure-bar-wrap,body.phase-ending .pressure-bar-wrap{background:rgba(255,255,255,0.85)}
+body.phase-title .pressure-bar,body.phase-question .pressure-bar,body.phase-event .pressure-bar,body.phase-care .pressure-bar,body.phase-ending .pressure-bar{background:rgba(0,0,0,.08)}
+body.phase-title .char-card,body.phase-question .char-card,body.phase-event .char-card,body.phase-care .char-card,body.phase-ending .char-card{background:rgba(255,255,255,0.4);border-color:rgba(0,0,0,0.08)}
+body.phase-title .char-card:hover,body.phase-question .char-card:hover,body.phase-event .char-card:hover,body.phase-care .char-card:hover,body.phase-ending .char-card:hover{border-color:#d4a017}
+body.phase-title .subject-option,body.phase-question .subject-option,body.phase-event .subject-option,body.phase-care .subject-option,body.phase-ending .subject-option,body.phase-subject_intro .subject-option,body.phase-subject_done .subject-option{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.1);color:#1a1a2e}
+body.phase-title .subject-option:hover,body.phase-question .subject-option:hover,body.phase-event .subject-option:hover,body.phase-care .subject-option:hover,body.phase-ending .subject-option:hover{border-color:#d4a017;background:rgba(0,0,0,.06)}
+body.phase-title .subject-option.selected,body.phase-question .subject-option.selected,body.phase-event .subject-option.selected,body.phase-care .subject-option.selected,body.phase-ending .subject-option.selected{border-color:#d4a017;background:rgba(214,160,23,.15)}
+body.phase-title .mod-tag,body.phase-question .mod-tag,body.phase-event .mod-tag,body.phase-care .mod-tag,body.phase-ending .mod-tag{background:rgba(0,0,0,.06);color:rgba(0,0,0,.5)}
+body.phase-title .narrative,body.phase-question .narrative,body.phase-event .narrative,body.phase-care .narrative,body.phase-ending .narrative{background:rgba(255,255,255,.4);border-left-color:#b8860b}
+body.phase-title .event-card.good,body.phase-question .event-card.good,body.phase-event .event-card.good,body.phase-care .event-card.good,body.phase-ending .event-card.good{background:rgba(34,139,34,.12);border-color:rgba(34,139,34,.35)}
+body.phase-title .event-card.bad,body.phase-question .event-card.bad,body.phase-event .event-card.bad,body.phase-care .event-card.bad,body.phase-ending .event-card.bad{background:rgba(178,34,34,.1);border-color:rgba(178,34,34,.3)}
+body.phase-title .care-card,body.phase-question .care-card,body.phase-event .care-card,body.phase-care .care-card,body.phase-ending .care-card{background:rgba(161,140,209,.15);border-color:rgba(120,100,180,.35)}
+body.phase-title .pressure-fill.low,body.phase-question .pressure-fill.low,body.phase-event .pressure-fill.low,body.phase-care .pressure-fill.low,body.phase-ending .pressure-fill.low{background:#228B22}
+body.phase-title .pressure-fill.mid,body.phase-question .pressure-fill.mid,body.phase-event .pressure-fill.mid,body.phase-care .pressure-fill.mid,body.phase-ending .pressure-fill.mid{background:#DAA520}
+body.phase-title .pressure-fill.high,body.phase-question .pressure-fill.high,body.phase-event .pressure-fill.high,body.phase-care .pressure-fill.high,body.phase-ending .pressure-fill.high{background:#B22222}
+body.phase-title .achievement-hint,body.phase-question .achievement-hint,body.phase-event .achievement-hint,body.phase-care .achievement-hint,body.phase-ending .achievement-hint{color:#b8860b}
+body.phase-title .char-card .char-name,body.phase-question .char-card .char-name,body.phase-event .char-card .char-name,body.phase-care .char-card .char-name,body.phase-ending .char-card .char-name{color:#1a1a2e}
+body.phase-title .timer-ring .bg,body.phase-question .timer-ring .bg,body.phase-event .timer-ring .bg,body.phase-care .timer-ring .bg,body.phase-ending .timer-ring .bg{stroke:rgba(0,0,0,.1)}
+body.phase-title .btn-small,body.phase-question .btn-small,body.phase-event .btn-small,body.phase-care .btn-small,body.phase-ending .btn-small{background:rgba(0,0,0,.06);color:#1a1a2e;border-color:rgba(0,0,0,.1)}
+
+#app{position:relative;z-index:1}
+
+#brightness-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,20,.0);pointer-events:none;z-index:50;transition:background 1.2s ease}
+
+.card{background:var(--card);border:1px solid var(--card-border);border-radius:16px;padding:28px 24px;width:100%;backdrop-filter:blur(12px);position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),var(--accent2),transparent)}
+
+h1{font-size:2em;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;text-align:center;margin-bottom:8px}
+h2{font-size:1.4em;font-weight:700;text-align:center;margin-bottom:12px}
+h3{font-size:1.1em;font-weight:600;margin-bottom:8px}
+p{line-height:1.7;color:var(--text-dim);text-align:center}
+.subtitle{font-size:.9em;color:var(--text-dim);margin-bottom:24px}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:14px 32px;border:none;border-radius:12px;font-size:1em;font-weight:600;cursor:pointer;transition:all .25s ease;width:100%;margin-top:10px;font-family:inherit;position:relative;overflow:hidden}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#1a1a2e}
+.btn-primary:hover{box-shadow:0 4px 20px rgba(246,211,101,.4)}
+.btn-option{background:rgba(255,255,255,.08);color:var(--text);border:1px solid rgba(255,255,255,.12);text-align:left;padding:12px 16px;font-size:.92em;line-height:1.5}
+.btn-option:hover{background:rgba(255,255,255,.14);border-color:var(--accent)}
+.btn-option.selected{border-color:var(--accent);background:rgba(246,211,101,.12)}
+.btn-option.correct-reveal{border-color:var(--good);background:rgba(67,233,123,.1)}
+.btn-option.wrong-reveal{border-color:var(--bad);background:rgba(245,87,108,.08)}
+.btn-small{padding:10px 20px;font-size:.88em;width:auto}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+
+.char-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;width:100%;margin-top:12px}
+.char-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:12px 8px;cursor:pointer;transition:all .25s ease;text-align:center;min-height:100px;display:flex;flex-direction:column;justify-content:center}
+.char-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+.char-card .char-name{font-weight:700;font-size:.88em;margin-bottom:4px}
+.char-card .char-desc{font-size:.7em;color:var(--text-dim);line-height:1.4;display:none}
+.char-card .char-modifiers{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap;justify-content:center}
+.char-card .mod-tag{font-size:.65em;padding:2px 6px;border-radius:10px;background:rgba(255,255,255,.08);color:var(--text-dim)}
+.char-card .achievement-hint{font-size:.6em;color:var(--accent);margin-top:4px;font-style:italic}
+
+.achievements-modal{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px;animation:fadeIn .3s ease}
+.achievements-modal-content{background:linear-gradient(135deg,var(--bg1),var(--bg2));border:1px solid var(--card-border);border-radius:16px;padding:24px;max-width:500px;width:100%;max-height:80vh;overflow-y:auto;--text:#e8e8f0;--text-dim:rgba(255,255,255,0.5)}
+.achievements-modal-title{font-size:1.2em;font-weight:700;color:var(--accent);text-align:center;margin-bottom:16px}
+.achievements-modal-close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--text-dim);font-size:1.5em;cursor:pointer}
+.achievements-modal-close:hover{color:var(--text)}
+.achievements-list{display:flex;flex-direction:column;gap:10px}
+.achievement-item-new{display:flex;align-items:center;gap:12px;padding:12px;background:rgba(255,255,255,.04);border-radius:10px;border:1px solid rgba(255,255,255,.08)}
+.achievement-item-new.unlocked{border-color:rgba(246,211,101,.3);background:rgba(246,211,101,.05)}
+.achievement-item-new.locked{opacity:.5}
+.achievement-icon-new{font-size:1.8em;flex-shrink:0}
+.achievement-info{flex:1;text-align:left}
+.achievement-name{font-weight:700;font-size:.95em;margin-bottom:2px}
+.achievement-desc{font-size:.8em;color:var(--text-dim)}
+.achievement-hint{font-size:.75em;color:var(--accent);font-style:italic;margin-top:4px}
+.achievement-status{font-size:.8em;font-weight:700;color:var(--good)}
+
+.pressure-bar-wrap{width:100%;margin:0;position:fixed;top:env(safe-area-inset-top,0);left:0;right:0;padding:6px 12px;background:rgba(15,12,41,.92);backdrop-filter:blur(8px);z-index:100;display:none;transition:all .3s ease}
+.pressure-bar-wrap.visible{display:block}
+.pressure-label{display:flex;justify-content:space-between;font-size:.72em;margin-bottom:3px;color:var(--text-dim)}
+.pressure-bar{height:4px;border-radius:2px;background:rgba(255,255,255,.1);overflow:hidden}
+.pressure-fill{height:100%;border-radius:2px;transition:width .6s ease,background .6s ease;background:var(--good)}
+.pressure-fill.low{background:var(--good)}
+.pressure-fill.mid{background:var(--accent)}
+.pressure-fill.high{background:var(--bad)}
+.pressure-fill.flash-up{animation:flashUp .6s ease}
+.pressure-fill.flash-down{animation:flashDown .6s ease}
+.pressure-change{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:.75em;font-weight:700;opacity:0;transition:opacity .3s ease}
+.pressure-change.show{opacity:1;animation:fadeUp .8s ease forwards}
+.pressure-change.positive{color:var(--bad)}
+.pressure-change.negative{color:var(--good)}
+@keyframes flashUp{0%{filter:brightness(1)}30%{filter:brightness(1.5);box-shadow:0 0 10px rgba(245,87,108,.8)}100%{filter:brightness(1);box-shadow:none}}
+@keyframes flashDown{0%{filter:brightness(1)}30%{filter:brightness(1.3);box-shadow:0 0 10px rgba(67,233,123,.6)}100%{filter:brightness(1);box-shadow:none}}
+@keyframes pressureBreathe{0%,100%{opacity:1;box-shadow:0 0 4px rgba(245,87,108,.3)}50%{opacity:.7;box-shadow:0 0 12px rgba(245,87,108,.6)}}
+.pressure-fill.breathe{animation:pressureBreathe 2s ease-in-out infinite}
+@keyframes fadeUp{0%{opacity:0;transform:translateY(-50%) translateX(10px)}20%{opacity:1;transform:translateY(-50%) translateX(0)}80%{opacity:1;transform:translateY(-50%) translateX(0)}100%{opacity:0;transform:translateY(-80%) translateX(0)}}
+@keyframes streakGlow{0%{border-color:rgba(67,233,123,.8);box-shadow:0 0 8px rgba(67,233,123,.4)}50%{border-color:rgba(67,233,123,.4);box-shadow:0 0 16px rgba(67,233,123,.6)}100%{border-color:rgba(67,233,123,0);box-shadow:none}}
+.btn-option.streak-flash{animation:streakGlow .8s ease forwards}
+@keyframes triggerHighlight{0%{box-shadow:0 0 0 rgba(246,211,101,0)}30%{box-shadow:0 0 20px rgba(246,211,101,.6);border-color:rgba(246,211,101,.8)}100%{box-shadow:0 0 0 rgba(246,211,101,0);border-color:rgba(255,255,255,.1)}}
+.char-card.trigger-glow{animation:triggerHighlight 2s ease forwards}
+
+.timer-ring{position:fixed;top:calc(env(safe-area-inset-top,0) + 8px);right:12px;z-index:101;display:none}
+.timer-ring.visible{display:block}
+.timer-ring svg{width:40px;height:40px;transform:rotate(-90deg)}
+.timer-ring circle{fill:none;stroke-width:2.5}
+.timer-ring .bg{stroke:rgba(255,255,255,.1)}
+.timer-ring .fg{stroke:var(--accent);stroke-linecap:round;transition:stroke-dashoffset .3s linear,stroke .3s}
+.timer-ring .fg.warn{stroke:var(--timer-warn)}
+.timer-ring .time-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:.75em;font-weight:700}
+.timer-ring .time-text.warn{animation:timerPulse .5s ease infinite}
+.timer-ring .fg.pressure-high{stroke:var(--bad)}
+.timer-ring .time-text.pressure-high{animation:shake .4s ease infinite}
+.timer-ring .fg.pressure-extreme{stroke:#ff0000;filter:drop-shadow(0 0 4px rgba(255,0,0,.5))}
+.timer-ring .time-text.pressure-extreme{animation:shake .2s ease infinite}
+@keyframes shakeHard{0%,100%{transform:translateX(0)}15%{transform:translateX(-6px)}30%{transform:translateX(6px)}45%{transform:translateX(-5px)}60%{transform:translateX(5px)}75%{transform:translateX(-3px)}90%{transform:translateX(3px)}}
+.timer-ring .time-text.pressure-extreme{animation:shakeHard .3s ease infinite}
+
+.progress-text{position:fixed;top:calc(env(safe-area-inset-top,0) + 8px);left:12px;z-index:101;font-size:.75em;color:var(--text-dim);display:none}
+.progress-text.visible{display:block}
+.progress-text .subject-name{color:var(--accent);font-weight:600}
+
+.question-area{width:100%;margin-top:8px}
+.question-text{font-size:1em;line-height:1.8;color:var(--text);margin-bottom:16px;font-weight:500}
+.question-subject-tag{display:inline-block;font-size:.75em;padding:3px 10px;border-radius:20px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#1a1a2e;font-weight:700;margin-bottom:12px}
+.options-list{display:flex;flex-direction:column;gap:8px}
+
+.narrative{font-size:1em;line-height:2;color:var(--text);text-align:left;font-style:italic;padding:16px 20px;margin:16px 0;background:rgba(255,255,255,.04);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;animation:slideUp .6s ease}
+.narrative::before{content:'"';font-size:1.4em;color:var(--accent);margin-right:4px}
+.narrative::after{content:'"';font-size:1.4em;color:var(--accent);margin-left:4px}
+
+.event-card{padding:20px;border-radius:12px;text-align:center;animation:fadeIn .5s ease}
+.event-card.good{background:rgba(67,233,123,.1);border:1px solid rgba(67,233,123,.3)}
+.event-card.bad{background:rgba(245,87,108,.1);border:1px solid rgba(245,87,108,.3)}
+.event-card .event-icon{font-size:2em;margin-bottom:8px}
+.event-card .event-text{font-size:.92em;line-height:1.7;color:var(--text)}
+
+.care-card{background:rgba(161,140,209,.1);border:1px solid rgba(161,140,209,.3);border-radius:12px;padding:20px;text-align:center;animation:fadeIn .5s ease}
+.care-card .care-icon{font-size:2em;margin-bottom:8px}
+.care-card .care-text{font-size:.95em;line-height:1.8;color:var(--text)}
+
+.subject-intro{text-align:center;padding:40px 0}
+.subject-intro .subject-name{font-size:1.8em;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:8px}
+.subject-intro .subject-desc{color:var(--text-dim);font-size:.9em}
+
+.result-card{text-align:center;padding:20px 0}
+.result-score{font-size:3em;font-weight:900;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin:16px 0}
+.result-tier{font-size:1.2em;font-weight:700;margin-bottom:12px}
+.result-summary{font-size:.92em;line-height:1.8;color:var(--text-dim);margin-bottom:16px;text-align:left}
+.result-breakdown{width:100%;margin:16px 0;text-align:left}
+.result-breakdown .row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:.88em}
+.result-breakdown .row .subj-name{color:var(--text-dim)}
+.result-breakdown .row .subj-score{font-weight:600;color:var(--accent)}
+
+.unlock-banner{background:linear-gradient(135deg,rgba(246,211,101,.2),rgba(253,160,133,.15));border:2px solid rgba(246,211,101,.5);border-radius:16px;padding:20px;text-align:center;margin:20px 0;animation:glow 2s ease infinite}
+.unlock-banner.auto-fade{animation:glow 2s ease infinite,fadeOutSlow 1s ease 2s forwards}
+@keyframes fadeOutSlow{from{opacity:1;max-height:200px;margin:20px 0;padding:20px}to{opacity:0;max-height:0;margin:0;padding:0;overflow:hidden}}
+.unlock-banner .unlock-title{font-size:1em;color:var(--accent);font-weight:700;margin-bottom:8px;text-shadow:0 0 10px rgba(246,211,101,.5)}
+.unlock-banner .unlock-name{font-size:1.2em;font-weight:800;color:var(--text)}
+
+.stars{position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:0;overflow:hidden}
+.star{position:absolute;width:2px;height:2px;background:#fff;border-radius:50%;animation:breathe 3s ease infinite}
+
+.final-msg{font-size:.95em;color:var(--care);text-align:center;margin-top:12px;font-style:italic;line-height:1.8}
+
+.hidden{display:none!important}
+.mt8{margin-top:8px}.mt16{margin-top:16px}.mt24{margin-top:24px}.mb8{margin-bottom:8px}.mb16{margin-bottom:16px}
+
+.progress-dots{display:flex;gap:6px;justify-content:center;margin:12px 0}
+.progress-dots .dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.15)}
+.progress-dots .dot.done{background:var(--accent)}
+.progress-dots .dot.current{background:var(--accent2);animation:pulse 1s ease infinite}
+
+@media(max-width:480px){
+  .card{padding:16px 14px;padding-top:48px}
+  h1{font-size:1.4em}
+  h2{font-size:1.1em}
+  .btn{padding:14px 20px;min-height:48px}
+  .btn-option{padding:14px 16px;font-size:.88em;min-height:48px}
+  .question-text{font-size:.9em;line-height:1.7}
+  .timer-ring svg{width:36px;height:36px}
+  .timer-ring{right:10px}
+  .progress-text{font-size:.7em}
+  .narrative{font-size:.88em;line-height:1.8;padding:12px 14px}
+  .pressure-bar-wrap{padding:5px 10px}
+  .pressure-label{font-size:.68em}
+  .pressure-bar{height:3px}
+  .char-grid{grid-template-columns:repeat(3,1fr);gap:8px}
+  .char-card{padding:10px 6px;min-height:80px}
+  .char-card .char-name{font-size:.78em}
+  .achievements-grid{grid-template-columns:1fr}
+}
+
+@media(max-width:360px){
+  .card{padding:14px 12px;padding-top:44px}
+  h1{font-size:1.2em}
+  .btn{padding:12px 16px;font-size:.85em}
+  .btn-option{padding:12px 14px;font-size:.82em}
+  .timer-ring svg{width:32px;height:32px}
+  .char-grid{gap:6px}
+  .char-card{padding:8px 4px;min-height:70px}
+  .char-card .char-name{font-size:.72em}
+  .char-card .mod-tag{font-size:.6em;padding:1px 4px}
+}
+
+.subject-select{display:flex;flex-direction:column;gap:12px;margin:20px 0}
+.subject-select-group{background:rgba(255,255,255,.04);border-radius:12px;padding:16px}
+.subject-select-group-title{font-size:.88em;color:var(--accent);font-weight:700;margin-bottom:10px;text-align:center}
+.subject-select-options{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.subject-option{padding:10px 16px;border-radius:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);cursor:pointer;transition:all .25s ease;font-size:.88em;color:var(--text);min-width:70px;text-align:center}
+.subject-option:hover{border-color:var(--accent);background:rgba(246,211,101,.08)}
+.subject-option.selected{border-color:var(--accent);background:rgba(246,211,101,.15);color:var(--accent);font-weight:600}
+.subject-option.disabled{opacity:.4;cursor:not-allowed;pointer-events:none}
+.subject-select-hint{text-align:center;font-size:.8em;color:var(--text-dim);margin-top:8px}
+
+.result-breakdown-details summary{list-style:none}
+.result-breakdown-details summary::-webkit-details-marker{display:none}
+.result-breakdown-details[open] summary{margin-bottom:8px}
+.result-breakdown-details[open] summary::before{content:'▼ '}
+.result-breakdown-details:not([open]) summary::before{content:'► '}
+</style>
+</head>
+<body>
+<div class="stars" id="stars"></div>
+<div class="pressure-bar-wrap" id="pressureWrap">
+  <div class="pressure-label"><span>压力</span><span id="pressureVal">30%</span></div>
+  <div class="pressure-bar"><div class="pressure-fill low" id="pressureFill" style="width:30%"></div></div>
+  <div class="pressure-change" id="pressureChange"></div>
+</div>
+<div class="timer-ring" id="timerRing">
+  <svg viewBox="0 0 52 52"><circle class="bg" cx="26" cy="26" r="22"/><circle class="fg" id="timerCircle" cx="26" cy="26" r="22"/></svg>
+  <div class="time-text" id="timerText">15</div>
+</div>
+<div class="progress-text" id="progressText"><span class="subject-name" id="progressSubject">语文</span> · <span id="progressIndex">第1/6科</span></div>
+<div id="app"></div>
+<div id="brightness-overlay"></div>
+
+<script>
+const CIRC=2*Math.PI*20;
+const $=id=>document.getElementById(id);
+const app=$('app');
+
+const CHARS=[
+  {id:'normal',name:'普通考生',desc:'平平无奇的高三学生，没有特别的优势，也没有太大的劣势。一切靠自己三年的积累。',unlock:'初始可用',mods:{pressureResist:0,scoreBonus:0,eventLuck:0},unlocked:true,hidden:{strength:65,pressureResist:60,resilience:55,timeSensitivity:50,subjectBias:{}},initialPressure:35,tag:'基础',trigger:'连续2次选择最优选项',triggerEffect:'喝口热汤也挺好，全科目+8分'},
+  {id:'repeat',name:'复读生',desc:'经历了一次高考的洗礼，你比应届生多了一份沉稳，但也多了一份难以言说的压力。',unlock:'完成1轮解锁',mods:{pressureResist:15,scoreBonus:-10,eventLuck:0},unlocked:false,hidden:{strength:72,pressureResist:42,resilience:38,timeSensitivity:72,subjectBias:{}},initialPressure:45,tag:'沉稳',trigger:'压力≥60',triggerEffect:'又是这个位置，第一科+15分'},
+  {id:'art',name:'艺考生',desc:'集训了大半年的艺术生，文化课基础薄弱，但心态反而比较放松。',unlock:'完成2轮解锁',mods:{pressureResist:-10,scoreBonus:-20,eventLuck:15},unlocked:false,hidden:{strength:58,pressureResist:50,resilience:62,timeSensitivity:65,subjectBias:{chinese:8,math:-10}},initialPressure:38,tag:'放松',trigger:'触发糖/鸡汤类关怀',triggerEffect:'集训之外的甜，全科目+10分'},
+  {id:'science',name:'理科大神',desc:'理科竞赛获奖选手，数理化是你的天下，但语文和英语……随缘吧。',unlock:'完成3轮解锁',mods:{pressureResist:5,scoreBonus:30,eventLuck:0},unlocked:false,hidden:{strength:80,pressureResist:58,resilience:50,timeSensitivity:55,subjectBias:{math:12,physics:12}},initialPressure:32,tag:'理科',trigger:'连续2次数学/物理选最优',triggerEffect:'这题我会，物理+20分'},
+  {id:'biased',name:'偏科战神',desc:'擅长的科目能考满分，不擅长的科目能考个位数。极端但真实。',unlock:'完成4轮解锁',mods:{pressureResist:-5,scoreBonus:10,eventLuck:5},unlocked:false,hidden:{strength:70,pressureResist:52,resilience:45,timeSensitivity:62,subjectBias:{}},initialPressure:36,tag:'极端',trigger:'压力≥60',triggerEffect:'偏得理直气壮，最高分科目+25'},
+  {id:'nervous',name:'发挥失常型',desc:'平时成绩不错，但一到大考就容易紧张。压力越大，发挥越不稳定。',unlock:'单局低于90分解锁',mods:{pressureResist:-20,scoreBonus:0,eventLuck:-15},unlocked:false,hidden:{strength:78,pressureResist:32,resilience:28,timeSensitivity:82,subjectBias:{}},initialPressure:48,tag:'紧张',trigger:'压力≥50',triggerEffect:'手又开始抖了，后三科+12分'},
+  {id:'county',name:'县城考生',desc:'从县城中学走出来的孩子，资源有限，但韧性十足。',unlock:'完成5轮解锁',mods:{pressureResist:0,scoreBonus:0,eventLuck:0},unlocked:false,hidden:{strength:68,pressureResist:72,resilience:78,timeSensitivity:52,subjectBias:{}},initialPressure:28,tag:'坚韧',trigger:'触发父母/鸡汤类关怀',triggerEffect:'家里的味道，压力-20'},
+  {id:'competition',name:'竞赛生',desc:'学科竞赛的参与者，物理、化学、生物是绝对强项，但文化课时间被压缩。',unlock:'理科大神120分解锁',mods:{pressureResist:0,scoreBonus:0,eventLuck:0},unlocked:false,hidden:{strength:82,pressureResist:55,resilience:48,timeSensitivity:60,subjectBias:{physics:12,chemistry:12,biology:12}},initialPressure:34,tag:'竞赛',trigger:'连续2次物化生选最优',triggerEffect:'竞赛生的本能，物理/化学/生物各+10分'},
+  {id:'leftbehind',name:'留守儿童',desc:'父母常年在外，你学会了独立面对一切，包括高考。',unlock:'完成6轮解锁',mods:{pressureResist:0,scoreBonus:0,eventLuck:0},unlocked:false,hidden:{strength:60,pressureResist:68,resilience:85,timeSensitivity:40,subjectBias:{}},initialPressure:30,tag:'独立',trigger:'触发父母短信/温暖食物关怀',triggerEffect:'有人惦记，最终分+15'},
+  {id:'familyCrisis',name:'家庭变故型',desc:'经历过家庭变故的你，比同龄人多了一份早熟和沉重。',unlock:'2次压力超85解锁',mods:{pressureResist:0,scoreBonus:0,eventLuck:0},unlocked:false,hidden:{strength:63,pressureResist:36,resilience:30,timeSensitivity:78,subjectBias:{}},initialPressure:46,tag:'早熟',trigger:'压力≥65',triggerEffect:'撑过就好，抗压+25'},
+  {id:'preadmit',name:'保送边缘型',desc:'成绩优异但未能保送，你带着不甘和证明自己的决心走进考场。',unlock:'单局130分解锁',mods:{pressureResist:0,scoreBonus:0,eventLuck:0},unlocked:false,hidden:{strength:75,pressureResist:72,resilience:65,timeSensitivity:45,subjectBias:{}},initialPressure:30,tag:'不甘',trigger:'连续2次选择最优选项',triggerEffect:'还要证明一次，后三科+15分'},
+  {id:'slackoff',name:'摆烂觉醒型',desc:'曾经摆烂放弃的你，在某个时刻突然觉醒，但基础已经落下太多。',unlock:'连续2轮低于80分解锁',mods:{pressureResist:0,scoreBonus:0,eventLuck:0},unlocked:false,hidden:{strength:55,pressureResist:50,resilience:70,timeSensitivity:35,subjectBias:{}},initialPressure:33,tag:'觉醒',trigger:'完成3科后选择最优选项',triggerEffect:'现在开始也不晚，全科目+12分'}
+];
+
+const SUBJECTS=[
+  {id:'chinese',name:'语文',time:15,desc:'第一场，语文。窗外的蝉鸣声隐约传来，你深吸一口气，翻开了试卷。'},
+  {id:'math',name:'数学',time:15,desc:'数学考试开始。教室安静得只剩翻试卷的沙沙声和头顶风扇的嗡嗡声。'},
+  {id:'english',name:'英语',time:15,desc:'下午第一场，英语。你调整了一下耳机，等待听力部分的开始。'},
+  {id:'physics',name:'物理',time:15,desc:'物理考试开始。力学、电磁学、光学……你默默祈祷别出太难的计算题。'},
+  {id:'history',name:'历史',time:15,desc:'历史考试开始。你翻开试卷，那些历史事件在脑海中缓缓浮现。'},
+  {id:'chemistry',name:'化学',time:15,desc:'化学考试开始。元素周期表在你脑海中缓缓旋转。'},
+  {id:'biology',name:'生物',time:15,desc:'生物考试开始。你已经有些疲惫了，但你知道，这是最后一场。'},
+  {id:'geography',name:'地理',time:15,desc:'地理考试开始。经纬线、气候类型、地形地貌……你开始分析每一道题。'},
+  {id:'politics',name:'政治',time:15,desc:'政治考试开始。你回忆着那些知识点，试图在试卷上完美呈现。'}
+];
+
+const QUESTIONS={
+chinese:{
+normal:{q:'语文作文题来了。题目是《论坚持》。你决定……',opts:[
+  {text:'A. 先花五分钟列个提纲，理清论点、论据和论证结构，再动笔',score:95,label:'稳中求进'},
+  {text:'B. 不管了，灵感来了直接写，边想边写，一气呵成',score:55,label:'随性发挥'},
+  {text:'C. 先做前面的阅读理解，作文留最后30分钟再写',score:75,label:'合理分配'},
+  {text:'D. 套用上辈子背过的那篇范文，改改关键词应该能蒙混过关',score:30,label:'投机取巧'}
+]},
+repeat:{q:'语文作文题《论坚持》。去年你因为跑题失了分，今年你……',opts:[
+  {text:'A. 去年就是审题太急，这次一定逐字读题，列好提纲再下笔',score:90,label:'吸取教训'},
+  {text:'B. 看到"坚持"二字就想起去年落榜的滋味，脑子一片空白',score:45,label:'心理阴影'},
+  {text:'C. 告诉自己冷静，去年的错误今年不会再犯',score:75,label:'调整心态'},
+  {text:'D. 又想套用去年背过的范文，但犹豫要不要改一改',score:50,label:'犹豫不决'}
+]},
+art:{q:'语文作文题《论坚持》。集训大半年没怎么上文化课的你……',opts:[
+  {text:'A. 凭语感和生活经历来写，也许有独特的视角',score:65,label:'凭感觉'},
+  {text:'B. 有点懵，但坚持写完了',score:50,label:'硬撑'},
+  {text:'C. 想起集训时老师说的"坚持就是胜利"',score:70,label:'回忆加持'},
+  {text:'D. 随便写写，反正文化课不是强项',score:35,label:'放弃治疗'}
+]},
+science:{q:'语文作文题《论坚持》。对你来说，这题就像解数学题一样有逻辑可循。',opts:[
+  {text:'A. 像写证明题一样展开论证，论点论据条理清晰',score:85,label:'理科思维'},
+  {text:'B. 快速写完作文，把剩余时间留给检查前面的选择题',score:78,label:'效率优先'},
+  {text:'C. 觉得语文浪费时间，不如多检查一道数学题',score:55,label:'厌烦语文'},
+  {text:'D. 灵感突然来了，写得比预期好，也许理科生的逻辑也有优势',score:90,label:'超常发挥'}
+]},
+biased:{q:'语文作文题《论坚持》。语文是你最稳的科目。',opts:[
+  {text:'A. 稳扎稳打，发挥正常水平',score:85,label:'稳定发挥'},
+  {text:'B. 觉得这题太简单，有点掉以轻心',score:60,label:'轻敌'},
+  {text:'C. 认真审题，确保不丢分',score:90,label:'谨慎'},
+  {text:'D. 写得很快，提前检查',score:80,label:'速度型'}
+]},
+nervous:{q:'语文作文题《论坚持》。你看到题目，突然有点紧张。',opts:[
+  {text:'A. 深呼吸，手微微发抖，但告诉自己不要慌',score:70,label:'自我调节'},
+  {text:'B. 脑子一片空白，去年模拟考语文发挥失常的画面涌上来',score:40,label:'紧张卡壳'},
+  {text:'C. 强迫自己集中注意力，先写提纲再说',score:75,label:'强迫专注'},
+  {text:'D. 越想越紧张，干脆随便写写交差算了',score:35,label:'放弃倾向'}
+]},
+county:{q:'语文作文题《论坚持》。你想起县城中学的老师说过，语文是穷孩子的出路。',opts:[
+  {text:'A. 县城中学没有好的教辅资料，但你把每篇课文都背得滚瓜烂熟',score:85,label:'珍惜机会'},
+  {text:'B. 想起那些天没亮就起床早读的日子，笔下更有力量了',score:90,label:'回忆激励'},
+  {text:'C. 虽然紧张，但你知道这是走出县城的机会，不能放弃',score:75,label:'自我鼓励'},
+  {text:'D. 觉得这题和自己的人生经历很像——坚持，就是你的全部筹码',score:82,label:'感同身受'}
+]},
+competition:{q:'语文作文题《论坚持》。你更擅长用公式说话，但阅读理解的逻辑性还不错。',opts:[
+  {text:'A. 用逻辑思维来展开论证',score:80,label:'逻辑写作'},
+  {text:'B. 觉得语文有点烦，快速写完',score:60,label:'速战速决'},
+  {text:'C. 想起竞赛教练说的"坚持就是胜利"',score:75,label:'竞赛精神'},
+  {text:'D. 写得有些吃力，但坚持完成了',score:65,label:'坚持完成'}
+]},
+leftbehind:{q:'语文作文题《论坚持》。你想起小时候在院子里借着月光读书的日子。',opts:[
+  {text:'A. 那些独自坚持的时光，成了你最好的素材',score:90,label:'经历成文'},
+  {text:'B. 写着写着，眼眶有些湿润',score:75,label:'情感流露'},
+  {text:'C. 告诉自己不要分心，专注答题',score:70,label:'专注'},
+  {text:'D. 觉得这题就是在写自己的人生',score:85,label:'人生写照'}
+]},
+familyCrisis:{q:'语文作文题《论坚持》。你深吸一口气，把那些说不出口的情绪都压在笔尖。',opts:[
+  {text:'A. 把坚持理解为对生活的承受',score:85,label:'早熟理解'},
+  {text:'B. 写着写着，感觉轻松了一些',score:75,label:'情绪释放'},
+  {text:'C. 觉得自己比同龄人更懂坚持的含义',score:80,label:'超越年龄'},
+  {text:'D. 不想写太多，赶紧做完',score:55,label:'逃避'}
+]},
+preadmit:{q:'语文作文题《论坚持》。本来可以保送的你，证明自己的方式就是高考。',opts:[
+  {text:'A. 写得格外认真，要证明自己',score:90,label:'证明决心'},
+  {text:'B. 有些后悔没直接保送，但现在要向前看',score:70,label:'调整心态'},
+  {text:'C. 觉得这题很简单，正常发挥',score:80,label:'正常发挥'},
+  {text:'D. 把不甘写进文章里',score:85,label:'情感投入'}
+]},
+slackoff:{q:'语文作文题《论坚持》。曾经连书都不愿意翻的你，现在想好好写每一个字。',opts:[
+  {text:'A. 认真地写，珍惜这次机会',score:80,label:'珍惜'},
+  {text:'B. 觉得有些吃力，但坚持写完了',score:65,label:'坚持'},
+  {text:'C. 想起那些摆烂的日子，有些后悔',score:70,label:'后悔'},
+  {text:'D. 告诉自己，现在开始还不晚',score:75,label:'觉醒'}
+]}
+},
+math:{
+normal:{q:'数学最后一道大题，导数压轴题。你看了第二问完全没有思路。此时距离考试结束还有25分钟。你决定……',opts:[
+  {text:'A. 先写第一问拿基础分，第二问能写多少写多少',score:95,label:'稳扎稳打'},
+  {text:'B. 死磕第二问，一定要做出来',score:40,label:'孤注一掷'},
+  {text:'C. 放弃这道题，回头检查前面所有选择题和填空题',score:80,label:'全面检查'},
+  {text:'D. 第二问直接写"解：由题意得……"然后编一个过程',score:25,label:'碰运气'}
+]},
+repeat:{q:'数学导数压轴题。去年这道题你没做出来，今年你又遇到了类似的。',opts:[
+  {text:'A. 去年也是这种题型，你告诉自己这次不一样，冷静分析',score:85,label:'克服阴影'},
+  {text:'B. 去年失败的画面突然涌上来，手心开始出汗，差点想放弃',score:50,label:'心理负担'},
+  {text:'C. 先做第一问拿基础分，第二问能写多少写多少，去年就是太贪心',score:75,label:'吸取教训'},
+  {text:'D. 快速跳过这道题，去年在这上面浪费了太多时间',score:60,label:'战略回避'}
+]},
+art:{q:'数学最后一道大题。你看了看题目，深吸一口气。',opts:[
+  {text:'A. 能拿一分是一分，把会的部分写上',score:70,label:'尽力而为'},
+  {text:'B. 有点懵，但随便写了一些过程',score:45,label:'硬写'},
+  {text:'C. 想起集训时数学老师说的"基础分最重要"',score:65,label:'记住教导'},
+  {text:'D. 直接放弃，检查前面的题',score:55,label:'放弃'}
+]},
+science:{q:'数学导数压轴题。你嘴角微微上扬，这是你的主场。',opts:[
+  {text:'A. 快速分析出思路，三步并两步写下过程，还有时间检查',score:95,label:'理科大神'},
+  {text:'B. 觉得这题太简单了，有些掉以轻心，没仔细写过程',score:65,label:'轻敌'},
+  {text:'C. 用竞赛里的巧妙方法快速解决，阅卷老师都会眼前一亮',score:92,label:'竞赛技巧'},
+  {text:'D. 做完后仔细检查每一步计算，确保不丢步骤分',score:88,label:'谨慎检查'}
+]},
+biased:{q:'数学是你的强项，但前面那道立体几何让你皱了皱眉。',opts:[
+  {text:'A. 调整心态，专注做这道导数题',score:85,label:'调整'},
+  {text:'B. 觉得立体几何失误了，这道一定要拿满',score:75,label:'补偿心理'},
+  {text:'C. 快速写完，不想再检查',score:60,label:'急躁'},
+  {text:'D. 告诉自己稳住，不要受影响',score:80,label:'稳住'}
+]},
+nervous:{q:'数学导数压轴题。去年模拟考数学你只考了89分。',opts:[
+  {text:'A. 手开始发抖，但咬紧牙关强迫自己冷静下来',score:65,label:'紧张但坚持'},
+  {text:'B. 想起去年的失败，脑子一片空白，想放弃这道题',score:40,label:'紧张加剧'},
+  {text:'C. 深呼吸三次，告诉自己这次和去年不一样',score:75,label:'自我调节'},
+  {text:'D. 算了，这道题去年就没做出来，跳过吧',score:45,label:'放弃倾向'}
+]},
+county:{q:'数学导数压轴题。县城中学的教学楼很旧，但数学老师很厉害。',opts:[
+  {text:'A. 想起数学老师用粉笔在黑板上推导的样子，你有信心了',score:85,label:'老师加持'},
+  {text:'B. 县城中学没有名师辅导，但你有的是不服输的劲头',score:82,label:'坚韧'},
+  {text:'C. 认真分析，一步一步来，不能辜负自己这些年的努力',score:90,label:'踏实'},
+  {text:'D. 虽然模拟卷做得少，但你觉得这道题并非不可攻克',score:75,label:'自信'}
+]},
+competition:{q:'数学导数压轴题。数学竞赛题比这难多了。',opts:[
+  {text:'A. 用竞赛思维快速解决',score:95,label:'竞赛思维'},
+  {text:'B. 觉得这题太简单，有些大意',score:70,label:'轻敌'},
+  {text:'C. 认真写过程，确保不丢步骤分',score:85,label:'谨慎'},
+  {text:'D. 快速写完，检查后面的题',score:80,label:'效率'}
+]},
+leftbehind:{q:'数学导数压轴题。你没有人可以问，只能靠自己。',opts:[
+  {text:'A. 独立思考，相信自己的能力',score:85,label:'独立'},
+  {text:'B. 想起那些独自做题的晚自习',score:80,label:'回忆'},
+  {text:'C. 有些紧张，但告诉自己要冷静',score:70,label:'自我调节'},
+  {text:'D. 认真写过程，一分一分地拿',score:90,label:'踏实'}
+]},
+familyCrisis:{q:'数学导数压轴题。你告诉自己冷静下来，一步一步来。',opts:[
+  {text:'A. 像分析生活一样分析题目',score:80,label:'理性分析'},
+  {text:'B. 觉得这题很难，有些烦躁',score:50,label:'烦躁'},
+  {text:'C. 把做题当作暂时逃避烦恼的方式',score:75,label:'逃避'},
+  {text:'D. 认真写过程，不管结果如何',score:85,label:'专注'}
+]},
+preadmit:{q:'数学导数压轴题。是你证明自己的武器。',opts:[
+  {text:'A. 每一分都要稳稳拿下',score:90,label:'稳健'},
+  {text:'B. 觉得这题很简单，正常发挥',score:80,label:'正常发挥'},
+  {text:'C. 有些压力，告诉自己要考好',score:70,label:'压力'},
+  {text:'D. 快速写完，检查一遍',score:85,label:'效率'}
+]},
+slackoff:{q:'数学导数压轴题。曾经放弃的科目，现在你想试着面对。',opts:[
+  {text:'A. 认真地写，珍惜这次机会',score:80,label:'珍惜'},
+  {text:'B. 觉得有些吃力，但坚持写过程',score:70,label:'坚持'},
+  {text:'C. 想起那些摆烂的日子，有些后悔',score:60,label:'后悔'},
+  {text:'D. 告诉自己，现在开始还不晚',score:75,label:'觉醒'}
+]}
+},
+history:{
+normal:{q:'历史材料分析题。你阅读材料后，开始分析问题的背景和影响。',opts:[
+  {text:'A. 先梳理时间线，再分析事件的因果关系',score:85,label:'条理清晰'},
+  {text:'B. 直接回答问题，凭记忆写下要点',score:65,label:'凭记忆'},
+  {text:'C. 仔细分析材料，提取关键信息后再作答',score:90,label:'材料分析'},
+  {text:'D. 快速写完，把希望寄托在下一题',score:50,label:'急躁'}
+]},
+repeat:{q:'历史材料分析题。去年你在这类题目上失了分，今年你格外小心。',opts:[
+  {text:'A. 去年就是审题太急，这次逐字读材料再作答',score:90,label:'吸取教训'},
+  {text:'B. 看到材料题就紧张，去年失分的画面浮现',score:58,label:'紧张'},
+  {text:'C. 告诉自己冷静，按平时练习的方法一步步来',score:80,label:'冷静'},
+  {text:'D. 去年在这科翻了车，这次保守作答不冒险',score:65,label:'保守'}
+]},
+art:{q:'历史材料分析题。你对历史事件的记忆有些模糊，但你在努力回忆。',opts:[
+  {text:'A. 凭感觉写，能写多少写多少',score:55,label:'凭感觉'},
+  {text:'B. 想起集训时历史老师讲的那些故事',score:70,label:'回忆加持'},
+  {text:'C. 仔细分析材料，试着从中找到答案',score:75,label:'材料分析'},
+  {text:'D. 有些懵，但坚持写完了',score:50,label:'硬撑'}
+]},
+science:{q:'历史材料分析题。你更擅长理科思维，但历史也有它的逻辑。',opts:[
+  {text:'A. 用逻辑推理分析事件的因果关系，像解理科题一样',score:82,label:'理科思维'},
+  {text:'B. 觉得历史需要背的东西太多，快速写完把时间留给理科',score:58,label:'效率优先'},
+  {text:'C. 认真分析材料，争取在文科科目上也不丢分',score:85,label:'认真'},
+  {text:'D. 用理科的严谨态度对待每一个要点',score:80,label:'严谨'}
+]},
+biased:{q:'历史材料分析题。文科类的题目你比较有把握。',opts:[
+  {text:'A. 稳扎稳打，发挥正常水平',score:85,label:'稳定发挥'},
+  {text:'B. 觉得这题很简单，有些掉以轻心',score:60,label:'轻敌'},
+  {text:'C. 认真审题，确保不丢分',score:90,label:'谨慎'},
+  {text:'D. 写得很快，提前检查',score:80,label:'速度型'}
+]},
+nervous:{q:'历史材料分析题。你看到题目，突然有些紧张。',opts:[
+  {text:'A. 深呼吸，手心出汗，但强迫自己逐字读材料',score:70,label:'自我调节'},
+  {text:'B. 脑子一片空白，去年模拟考历史失常的画面涌上来',score:40,label:'紧张卡壳'},
+  {text:'C. 越想越慌，感觉那些历史事件都记混了',score:42,label:'焦虑加剧'},
+  {text:'D. 算了，历史一直不太好，随便写写交差',score:38,label:'放弃倾向'}
+]},
+county:{q:'历史材料分析题。你想起县城中学的历史老师说过，历史是穷孩子的出路。',opts:[
+  {text:'A. 县城中学没有好的教辅，但你把课本翻得滚瓜烂熟',score:85,label:'珍惜机会'},
+  {text:'B. 想起那些在昏暗灯光下背历史的日子，笔下更有力量',score:90,label:'回忆激励'},
+  {text:'C. 虽然紧张，但你知道这是走出县城的机会',score:72,label:'自我鼓励'},
+  {text:'D. 觉得材料里那些变革和自己的人生经历很像',score:80,label:'感同身受'}
+]},
+competition:{q:'历史材料分析题。你更擅长用逻辑思维来分析历史事件。',opts:[
+  {text:'A. 用逻辑推理来分析因果关系',score:85,label:'逻辑分析'},
+  {text:'B. 觉得历史需要背的东西太多了',score:55,label:'厌烦记忆'},
+  {text:'C. 想起竞赛教练说的"坚持就是胜利"',score:70,label:'竞赛精神'},
+  {text:'D. 写得有些吃力，但坚持完成了',score:65,label:'坚持完成'}
+]},
+leftbehind:{q:'历史材料分析题。你想起小时候听爷爷奶奶讲的那些过去的故事。',opts:[
+  {text:'A. 那些故事成了你理解历史的素材',score:90,label:'经历成文'},
+  {text:'B. 写着写着，有些感触',score:75,label:'情感流露'},
+  {text:'C. 告诉自己不要分心，专注答题',score:70,label:'专注'},
+  {text:'D. 觉得这题就是在写自己的人生',score:85,label:'人生写照'}
+]},
+familyCrisis:{q:'历史材料分析题。你深吸一口气，把那些说不出口的情绪都压在笔尖。',opts:[
+  {text:'A. 把历史理解为对生活的承受',score:85,label:'早熟理解'},
+  {text:'B. 写着写着，感觉轻松了一些',score:75,label:'情绪释放'},
+  {text:'C. 觉得自己比同龄人更懂历史的含义',score:80,label:'超越年龄'},
+  {text:'D. 不想写太多，赶紧做完',score:55,label:'逃避'}
+]},
+preadmit:{q:'历史材料分析题。本来可以保送的你，证明自己的方式就是高考。',opts:[
+  {text:'A. 写得格外认真，要证明自己',score:90,label:'证明决心'},
+  {text:'B. 有些后悔没直接保送，但现在要向前看',score:70,label:'调整心态'},
+  {text:'C. 觉得这题很简单，正常发挥',score:80,label:'正常发挥'},
+  {text:'D. 把不甘写进答案里',score:85,label:'情感投入'}
+]},
+slackoff:{q:'历史材料分析题。曾经连书都不愿意翻的你，现在想好好写每一个字。',opts:[
+  {text:'A. 认真地写，珍惜这次机会',score:80,label:'珍惜'},
+  {text:'B. 觉得有些吃力，但坚持写完了',score:65,label:'坚持'},
+  {text:'C. 想起那些摆烂的日子，有些后悔',score:70,label:'后悔'},
+  {text:'D. 告诉自己，现在开始还不晚',score:75,label:'觉醒'}
+]}
+},
+geography:{
+normal:{q:'地理综合分析题。你看着地图，开始分析地形、气候和人文因素。',opts:[
+  {text:'A. 先分析自然地理因素，再分析人文地理因素',score:85,label:'条理清晰'},
+  {text:'B. 凭记忆写下要点',score:65,label:'凭记忆'},
+  {text:'C. 仔细分析图表，提取关键信息后再作答',score:90,label:'图表分析'},
+  {text:'D. 快速写完，把希望寄托在下一题',score:50,label:'急躁'}
+]},
+repeat:{q:'地理综合分析题。去年你在这类题目上失了分，今年你格外小心。',opts:[
+  {text:'A. 吸取教训，仔细审题再作答',score:90,label:'吸取教训'},
+  {text:'B. 有些紧张，生怕再次失误',score:60,label:'紧张'},
+  {text:'C. 告诉自己冷静，按平时练习的方法来',score:80,label:'冷静'},
+  {text:'D. 快速写完，不想在这题上浪费太多时间',score:55,label:'急躁'}
+]},
+art:{q:'地理综合分析题。你对地理图表的理解有些模糊，但你在努力分析。',opts:[
+  {text:'A. 凭感觉写，能写多少写多少',score:55,label:'凭感觉'},
+  {text:'B. 想起集训时地理老师讲的那些案例',score:70,label:'回忆加持'},
+  {text:'C. 仔细分析图表，试着从中找到答案',score:75,label:'图表分析'},
+  {text:'D. 有些懵，但坚持写完了',score:50,label:'硬撑'}
+]},
+science:{q:'地理综合分析题。你更擅长理科思维，但地理也有它的逻辑。',opts:[
+  {text:'A. 用逻辑思维分析地理现象的成因',score:80,label:'理科思维'},
+  {text:'B. 觉得地理需要背的东西太多了',score:55,label:'厌烦记忆'},
+  {text:'C. 快速写完，把时间留给后面的科目',score:65,label:'效率优先'},
+  {text:'D. 认真分析图表，争取多拿分',score:85,label:'认真'}
+]},
+biased:{q:'地理综合分析题。文科类的题目你比较有把握。',opts:[
+  {text:'A. 稳扎稳打，发挥正常水平',score:85,label:'稳定发挥'},
+  {text:'B. 觉得这题很简单，有些掉以轻心',score:60,label:'轻敌'},
+  {text:'C. 认真审题，确保不丢分',score:90,label:'谨慎'},
+  {text:'D. 写得很快，提前检查',score:80,label:'速度型'}
+]},
+nervous:{q:'地理综合分析题。你看到题目，突然有些紧张。',opts:[
+  {text:'A. 深呼吸，告诉自己不要慌',score:70,label:'自我调节'},
+  {text:'B. 脑子一片空白，过了好一会儿才动笔',score:40,label:'紧张卡壳'},
+  {text:'C. 想起去年模拟考地理发挥失常的经历',score:50,label:'回忆干扰'},
+  {text:'D. 强迫自己集中注意力，一字一句地写',score:75,label:'强迫专注'}
+]},
+county:{q:'地理综合分析题。你想起县城中学的地理老师说过，地理是穷孩子的出路。',opts:[
+  {text:'A. 认真写，不能辜负自己的机会',score:85,label:'珍惜机会'},
+  {text:'B. 想起那些早起晚睡的日子，更有动力了',score:90,label:'回忆激励'},
+  {text:'C. 有点紧张，但告诉自己要稳住',score:70,label:'自我鼓励'},
+  {text:'D. 觉得这题和自己的人生经历很像',score:80,label:'感同身受'}
+]},
+competition:{q:'地理综合分析题。你更擅长用逻辑思维来分析地理现象。',opts:[
+  {text:'A. 用逻辑推理来分析成因',score:85,label:'逻辑分析'},
+  {text:'B. 觉得地理需要背的东西太多了',score:55,label:'厌烦记忆'},
+  {text:'C. 想起竞赛教练说的"坚持就是胜利"',score:70,label:'竞赛精神'},
+  {text:'D. 写得有些吃力，但坚持完成了',score:65,label:'坚持完成'}
+]},
+leftbehind:{q:'地理综合分析题。你想起小时候在田野里观察的那些自然现象。',opts:[
+  {text:'A. 那些观察成了你理解地理的素材',score:90,label:'经历成文'},
+  {text:'B. 写着写着，有些感触',score:75,label:'情感流露'},
+  {text:'C. 告诉自己不要分心，专注答题',score:70,label:'专注'},
+  {text:'D. 觉得这题就是在写自己的人生',score:85,label:'人生写照'}
+]},
+familyCrisis:{q:'地理综合分析题。你深吸一口气，把那些说不出口的情绪都压在笔尖。',opts:[
+  {text:'A. 把地理理解为对生活的承受',score:85,label:'早熟理解'},
+  {text:'B. 写着写着，感觉轻松了一些',score:75,label:'情绪释放'},
+  {text:'C. 觉得自己比同龄人更懂地理的含义',score:80,label:'超越年龄'},
+  {text:'D. 不想写太多，赶紧做完',score:55,label:'逃避'}
+]},
+preadmit:{q:'地理综合分析题。本来可以保送的你，证明自己的方式就是高考。',opts:[
+  {text:'A. 写得格外认真，要证明自己',score:90,label:'证明决心'},
+  {text:'B. 有些后悔没直接保送，但现在要向前看',score:70,label:'调整心态'},
+  {text:'C. 觉得这题很简单，正常发挥',score:80,label:'正常发挥'},
+  {text:'D. 把不甘写进答案里',score:85,label:'情感投入'}
+]},
+slackoff:{q:'地理综合分析题。曾经连书都不愿意翻的你，现在想好好写每一个字。',opts:[
+  {text:'A. 认真地写，珍惜这次机会',score:80,label:'珍惜'},
+  {text:'B. 觉得有些吃力，但坚持写完了',score:65,label:'坚持'},
+  {text:'C. 想起那些摆烂的日子，有些后悔',score:70,label:'后悔'},
+  {text:'D. 告诉自己，现在开始还不晚',score:75,label:'觉醒'}
+]}
+},
+politics:{
+normal:{q:'政治论述题。你阅读材料后，开始运用政治理论知识来分析问题。',opts:[
+  {text:'A. 先列出知识点，再结合材料分析',score:85,label:'条理清晰'},
+  {text:'B. 凭记忆写下要点',score:65,label:'凭记忆'},
+  {text:'C. 仔细分析材料，提取关键信息后再作答',score:90,label:'材料分析'},
+  {text:'D. 快速写完，把希望寄托在下一题',score:50,label:'急躁'}
+]},
+repeat:{q:'政治论述题。去年你在这类题目上失了分，今年你格外小心。',opts:[
+  {text:'A. 吸取教训，仔细审题再作答',score:90,label:'吸取教训'},
+  {text:'B. 有些紧张，生怕再次失误',score:60,label:'紧张'},
+  {text:'C. 告诉自己冷静，按平时练习的方法来',score:80,label:'冷静'},
+  {text:'D. 快速写完，不想在这题上浪费太多时间',score:55,label:'急躁'}
+]},
+art:{q:'政治论述题。你对政治理论的记忆有些模糊，但你在努力回忆。',opts:[
+  {text:'A. 凭感觉写，能写多少写多少',score:55,label:'凭感觉'},
+  {text:'B. 想起集训时政治老师讲的那些案例',score:70,label:'回忆加持'},
+  {text:'C. 仔细分析材料，试着从中找到答案',score:75,label:'材料分析'},
+  {text:'D. 有些懵，但坚持写完了',score:50,label:'硬撑'}
+]},
+science:{q:'政治论述题。你更擅长理科思维，但政治也有它的逻辑。',opts:[
+  {text:'A. 用逻辑思维分析政治现象',score:80,label:'理科思维'},
+  {text:'B. 觉得政治需要背的东西太多了',score:55,label:'厌烦记忆'},
+  {text:'C. 快速写完，把时间留给后面的科目',score:65,label:'效率优先'},
+  {text:'D. 认真分析材料，争取多拿分',score:85,label:'认真'}
+]},
+biased:{q:'政治论述题。文科类的题目你比较有把握。',opts:[
+  {text:'A. 稳扎稳打，发挥正常水平',score:85,label:'稳定发挥'},
+  {text:'B. 觉得这题很简单，有些掉以轻心',score:60,label:'轻敌'},
+  {text:'C. 认真审题，确保不丢分',score:90,label:'谨慎'},
+  {text:'D. 写得很快，提前检查',score:80,label:'速度型'}
+]},
+nervous:{q:'政治论述题。你看到题目，突然有些紧张。',opts:[
+  {text:'A. 深呼吸，告诉自己不要慌',score:70,label:'自我调节'},
+  {text:'B. 脑子一片空白，过了好一会儿才动笔',score:40,label:'紧张卡壳'},
+  {text:'C. 想起去年模拟考政治发挥失常的经历',score:50,label:'回忆干扰'},
+  {text:'D. 强迫自己集中注意力，一字一句地写',score:75,label:'强迫专注'}
+]},
+county:{q:'政治论述题。你想起县城中学的政治老师说过，政治是穷孩子的出路。',opts:[
+  {text:'A. 认真写，不能辜负自己的机会',score:85,label:'珍惜机会'},
+  {text:'B. 想起那些早起晚睡的日子，更有动力了',score:90,label:'回忆激励'},
+  {text:'C. 有点紧张，但告诉自己要稳住',score:70,label:'自我鼓励'},
+  {text:'D. 觉得这题和自己的人生经历很像',score:80,label:'感同身受'}
+]},
+competition:{q:'政治论述题。你更擅长用逻辑思维来分析政治问题。',opts:[
+  {text:'A. 用逻辑推理来分析问题',score:85,label:'逻辑分析'},
+  {text:'B. 觉得政治需要背的东西太多了',score:55,label:'厌烦记忆'},
+  {text:'C. 想起竞赛教练说的"坚持就是胜利"',score:70,label:'竞赛精神'},
+  {text:'D. 写得有些吃力，但坚持完成了',score:65,label:'坚持完成'}
+]},
+leftbehind:{q:'政治论述题。你想起小时候听爷爷奶奶讲的那些过去的故事。',opts:[
+  {text:'A. 那些故事成了你理解政治的素材',score:90,label:'经历成文'},
+  {text:'B. 写着写着，有些感触',score:75,label:'情感流露'},
+  {text:'C. 告诉自己不要分心，专注答题',score:70,label:'专注'},
+  {text:'D. 觉得这题就是在写自己的人生',score:85,label:'人生写照'}
+]},
+familyCrisis:{q:'政治论述题。你深吸一口气，把那些说不出口的情绪都压在笔尖。',opts:[
+  {text:'A. 把政治理解为对生活的承受',score:85,label:'早熟理解'},
+  {text:'B. 写着写着，感觉轻松了一些',score:75,label:'情绪释放'},
+  {text:'C. 觉得自己比同龄人更懂政治的含义',score:80,label:'超越年龄'},
+  {text:'D. 不想写太多，赶紧做完',score:55,label:'逃避'}
+]},
+preadmit:{q:'政治论述题。本来可以保送的你，证明自己的方式就是高考。',opts:[
+  {text:'A. 写得格外认真，要证明自己',score:90,label:'证明决心'},
+  {text:'B. 有些后悔没直接保送，但现在要向前看',score:70,label:'调整心态'},
+  {text:'C. 觉得这题很简单，正常发挥',score:80,label:'正常发挥'},
+  {text:'D. 把不甘写进答案里',score:85,label:'情感投入'}
+]},
+slackoff:{q:'政治论述题。曾经连书都不愿意翻的你，现在想好好写每一个字。',opts:[
+  {text:'A. 认真地写，珍惜这次机会',score:80,label:'珍惜'},
+  {text:'B. 觉得有些吃力，但坚持写完了',score:65,label:'坚持'},
+  {text:'C. 想起那些摆烂的日子，有些后悔',score:70,label:'后悔'},
+  {text:'D. 告诉自己，现在开始还不晚',score:75,label:'觉醒'}
+]}
+},
+english:{
+normal:{q:'英语听力题。你戴上耳机，等待音频播放。',opts:[
+  {text:'A. 集中注意力，边听边记关键信息',score:90,label:'专注'},
+  {text:'B. 有些紧张，怕听不清楚',score:65,label:'紧张'},
+  {text:'C. 凭语感和逻辑推断答案',score:80,label:'推断'},
+  {text:'D. 随便涂一个，反正只有五分一题',score:50,label:'放弃'}
+]},
+repeat:{q:'英语听力。去年设备出了点小问题影响了发挥。今年你……',opts:[
+  {text:'A. 提前测试耳机，确保没问题',score:85,label:'吸取教训'},
+  {text:'B. 有些担心，怕再次出问题',score:60,label:'担忧'},
+  {text:'C. 告诉自己冷静，专注听内容',score:80,label:'冷静'},
+  {text:'D. 随便听听，不强求',score:55,label:'随缘'}
+]},
+art:{q:'英语听力。集训时每天背单词的习惯还是有点用的。',opts:[
+  {text:'A. 努力听懂每一个词',score:70,label:'努力'},
+  {text:'B. 凭语感猜答案',score:65,label:'语感'},
+  {text:'C. 有些懵，但坚持听完了',score:60,label:'坚持'},
+  {text:'D. 反正文化课不是强项，尽力就好',score:55,label:'放松'}
+]},
+science:{q:'英语听力。理科生的痛，但阅读理解和完形填空可以靠逻辑。',opts:[
+  {text:'A. 用逻辑思维推断答案',score:80,label:'逻辑'},
+  {text:'B. 觉得英语很烦，快速做完',score:60,label:'急躁'},
+  {text:'C. 集中注意力，尽量听懂',score:85,label:'专注'},
+  {text:'D. 随便涂一个，把时间留给阅读',score:50,label:'策略'}
+]},
+biased:{q:'英语听力。英语是你的弱势科目，你有些紧张。',opts:[
+  {text:'A. 深呼吸，告诉自己不要慌',score:75,label:'调节'},
+  {text:'B. 努力听，但很多都没听清',score:60,label:'吃力'},
+  {text:'C. 凭感觉涂答案',score:55,label:'感觉'},
+  {text:'D. 有些放弃，反正不是强项',score:45,label:'放弃'}
+]},
+nervous:{q:'英语听力。去年英语作文写偏题了。你深呼吸，告诉自己不要想过去。',opts:[
+  {text:'A. 集中注意力，专注当下',score:80,label:'专注'},
+  {text:'B. 手开始发抖，有些紧张',score:55,label:'紧张'},
+  {text:'C. 想起去年的失败，更加焦虑',score:45,label:'焦虑'},
+  {text:'D. 强迫自己冷静，认真听',score:75,label:'冷静'}
+]},
+county:{q:'英语听力。县城中学的英语老师口音很重，你基本靠自学。',opts:[
+  {text:'A. 努力听懂，珍惜这次机会',score:85,label:'珍惜'},
+  {text:'B. 有些吃力，但坚持听完了',score:70,label:'坚持'},
+  {text:'C. 凭感觉猜答案',score:60,label:'感觉'},
+  {text:'D. 告诉自己尽力就好',score:75,label:'平常心'}
+]},
+competition:{q:'英语听力。你更擅长用公式解题，但阅读理解还能应付。',opts:[
+  {text:'A. 用逻辑思维推断答案',score:80,label:'逻辑'},
+  {text:'B. 觉得英语不如理科有意思',score:60,label:'偏好'},
+  {text:'C. 集中注意力，认真听',score:85,label:'专注'},
+  {text:'D. 快速做完，把时间留给后面的理科科目',score:70,label:'效率'}
+]},
+leftbehind:{q:'英语听力。你想起父母在电话里总问你英语考得怎么样。',opts:[
+  {text:'A. 认真听，不想让他们失望',score:85,label:'决心'},
+  {text:'B. 有些压力，但告诉自己要冷静',score:75,label:'调节'},
+  {text:'C. 凭感觉涂答案',score:60,label:'感觉'},
+  {text:'D. 尽力就好，反正也没人辅导',score:70,label:'平常心'}
+]},
+familyCrisis:{q:'英语听力。你戴上耳机，隔绝外界的杂音，专注于每一个单词。',opts:[
+  {text:'A. 集中注意力，认真听',score:85,label:'专注'},
+  {text:'B. 把听英语当作暂时逃避',score:70,label:'逃避'},
+  {text:'C. 有些分心，强迫自己回来',score:65,label:'调节'},
+  {text:'D. 尽力听，能听懂多少是多少',score:75,label:'尽力'}
+]},
+preadmit:{q:'英语听力。英语是你的优势科目。发挥稳定，不要给自己压力。',opts:[
+  {text:'A. 自信地听，发挥正常水平',score:90,label:'自信'},
+  {text:'B. 有些大意，觉得太简单',score:65,label:'轻敌'},
+  {text:'C. 认真听，确保不丢分',score:85,label:'谨慎'},
+  {text:'D. 快速做完，检查一遍',score:80,label:'效率'}
+]},
+slackoff:{q:'英语听力。曾经摆烂的你，现在只想多背一个单词。',opts:[
+  {text:'A. 认真听，珍惜这次机会',score:80,label:'珍惜'},
+  {text:'B. 觉得有些吃力，但坚持听',score:70,label:'坚持'},
+  {text:'C. 想起那些摆烂的日子，有些后悔',score:65,label:'后悔'},
+  {text:'D. 告诉自己，现在开始还不晚',score:75,label:'觉醒'}
+]}
+},
+physics:{
+normal:{q:'物理选择题。力学和电磁学的综合应用。你看了看题目，开始分析。',opts:[
+  {text:'A. 列出公式，一步步推导',score:90,label:'严谨'},
+  {text:'B. 凭直觉选一个',score:55,label:'直觉'},
+  {text:'C. 用特殊值代入验证',score:85,label:'验证'},
+  {text:'D. 觉得太难，跳过',score:45,label:'放弃'}
+]},
+repeat:{q:'物理选择题。去年最后一道大题没做完，这次你合理分配时间。',opts:[
+  {text:'A. 去年就是时间分配失误，这次先做有把握的再回来攻难题',score:88,label:'策略'},
+  {text:'B. 看到这道题就想起去年考场的遗憾，有些紧张',score:58,label:'紧张'},
+  {text:'C. 告诉自己冷静，去年犯的错今年不会再犯',score:80,label:'冷静'},
+  {text:'D. 去年在这科翻了车，这次只求稳稳当当',score:70,label:'保守'}
+]},
+art:{q:'物理选择题。你看着题目上的受力分析图，感觉像在看天书。',opts:[
+  {text:'A. 随便选一个，反正不会',score:45,label:'放弃'},
+  {text:'B. 努力回忆公式，试着分析',score:60,label:'努力'},
+  {text:'C. 用排除法干掉两个选项',score:65,label:'排除'},
+  {text:'D. 跳过，做后面的题',score:50,label:'跳过'}
+]},
+science:{q:'物理选择题。你的竞赛不是白比的。这些题目在你眼里清晰明了。',opts:[
+  {text:'A. 快速分析受力过程和电路结构，答案呼之欲出',score:95,label:'自信'},
+  {text:'B. 觉得太简单了，差点犯粗心大意的毛病',score:68,label:'轻敌'},
+  {text:'C. 做完后逐题检查，竞赛生最忌讳在简单题上丢分',score:92,label:'谨慎检查'},
+  {text:'D. 用竞赛里的快捷方法秒杀，省下的时间留给后面的难题',score:94,label:'技巧突破'}
+]},
+biased:{q:'物理选择题。物理是你的强项之一，电磁学部分你很有信心。',opts:[
+  {text:'A. 稳扎稳打，发挥正常水平',score:85,label:'稳定'},
+  {text:'B. 觉得这题很简单',score:70,label:'轻敌'},
+  {text:'C. 认真分析，确保不丢分',score:90,label:'谨慎'},
+  {text:'D. 快速做完，检查一遍',score:80,label:'效率'}
+]},
+nervous:{q:'物理选择题。去年模拟考物理选择题错了五个。你握紧了笔。',opts:[
+  {text:'A. 深呼吸，手心出汗，但强迫自己一题一题来',score:72,label:'调节'},
+  {text:'B. 手开始发抖，去年的失败画面不断闪现',score:45,label:'紧张'},
+  {text:'C. 越想越慌，感觉什么都不会了',score:38,label:'焦虑加剧'},
+  {text:'D. 算了，物理一直不好，蒙几个赶紧做下一题',score:42,label:'放弃倾向'}
+]},
+county:{q:'物理选择题。县城中学的实验室很小，设备也旧，但你的梦想很大。',opts:[
+  {text:'A. 实验做得少，但理论题你从不丢分，认真分析每一个选项',score:85,label:'珍惜'},
+  {text:'B. 想起物理老师用简陋设备做演示的样子，更有动力了',score:82,label:'鼓励'},
+  {text:'C. 县城中学比不上重点中学，但你不服输',score:84,label:'荣誉'},
+  {text:'D. 虽然模拟题做得少，但基础扎实，尽力就好',score:75,label:'平常心'}
+]},
+competition:{q:'物理选择题。物理竞赛是你的主场。这些题目，你信手拈来。',opts:[
+  {text:'A. 用竞赛思维快速解决',score:95,label:'竞赛'},
+  {text:'B. 觉得太简单，有些大意',score:70,label:'轻敌'},
+  {text:'C. 认真写过程，确保不丢分',score:90,label:'谨慎'},
+  {text:'D. 快速做完，检查后面的题',score:85,label:'效率'}
+]},
+leftbehind:{q:'物理选择题。你想起一个人在教室里做题的晚自习。',opts:[
+  {text:'A. 独立思考，相信自己的能力',score:85,label:'独立'},
+  {text:'B. 想起那些独自做题的日子',score:80,label:'回忆'},
+  {text:'C. 有些紧张，但告诉自己要冷静',score:75,label:'调节'},
+  {text:'D. 认真分析，一分一分地拿',score:88,label:'踏实'}
+]},
+familyCrisis:{q:'物理选择题。你告诉自己，分析题目就像分析生活，一步一步来。',opts:[
+  {text:'A. 像分析生活一样分析题目',score:85,label:'理性'},
+  {text:'B. 觉得这题很难，有些烦躁',score:55,label:'烦躁'},
+  {text:'C. 把做题当作暂时逃避烦恼的方式',score:70,label:'逃避'},
+  {text:'D. 认真分析，不管结果如何',score:82,label:'专注'}
+]},
+preadmit:{q:'物理选择题。物理是你擅长的科目。稳住，不要失误。',opts:[
+  {text:'A. 每一分都要稳稳拿下',score:90,label:'稳健'},
+  {text:'B. 觉得这题很简单，正常发挥',score:80,label:'正常'},
+  {text:'C. 有些压力，告诉自己要考好',score:75,label:'压力'},
+  {text:'D. 快速做完，检查一遍',score:85,label:'效率'}
+]},
+slackoff:{q:'物理选择题。曾经放弃的科目，现在你想试着面对。',opts:[
+  {text:'A. 认真地分析，珍惜这次机会',score:80,label:'珍惜'},
+  {text:'B. 觉得有些吃力，但坚持分析',score:70,label:'坚持'},
+  {text:'C. 想起那些摆烂的日子，有些后悔',score:65,label:'后悔'},
+  {text:'D. 告诉自己，现在开始还不晚',score:75,label:'觉醒'}
+]}
+},
+chemistry:{
+normal:{q:'化学推断题。元素周期表在你脑海中浮现，你开始逐一分析。',opts:[
+  {text:'A. 画出元素位置，逐一验证',score:90,label:'严谨'},
+  {text:'B. 凭记忆直接选答案',score:65,label:'记忆'},
+  {text:'C. 用排除法先干掉两个选项',score:85,label:'排除'},
+  {text:'D. 觉得太难，随便选一个',score:50,label:'放弃'}
+]},
+repeat:{q:'化学推断题。去年推断题全对了。保持这个状态。',opts:[
+  {text:'A. 吸取去年的经验，仔细分析',score:85,label:'经验'},
+  {text:'B. 有些自信，觉得不难',score:75,label:'自信'},
+  {text:'C. 告诉自己不能大意',score:80,label:'谨慎'},
+  {text:'D. 快速做完，检查一遍',score:78,label:'效率'}
+]},
+art:{q:'化学推断题。方程式背了不少，但推断题还是有点虚。',opts:[
+  {text:'A. 努力回忆方程式，试着推断',score:65,label:'努力'},
+  {text:'B. 凭感觉选一个',score:50,label:'感觉'},
+  {text:'C. 用排除法缩小范围',score:70,label:'排除'},
+  {text:'D. 有些懵，但坚持分析',score:60,label:'坚持'}
+]},
+science:{q:'化学推断题。化学还行，虽然不如物理那么拿手，但基础题没问题。',opts:[
+  {text:'A. 认真分析，确保不丢分',score:85,label:'严谨'},
+  {text:'B. 觉得这题不难，快速做完',score:75,label:'效率'},
+  {text:'C. 用逻辑思维推断',score:82,label:'逻辑'},
+  {text:'D. 检查一遍，确保正确',score:80,label:'检查'}
+]},
+biased:{q:'化学推断题。化学是你的弱势，有机推断让你头疼。',opts:[
+  {text:'A. 努力分析，尽量拿分',score:70,label:'努力'},
+  {text:'B. 觉得太难，有些放弃',score:50,label:'放弃'},
+  {text:'C. 用排除法试试',score:65,label:'排除'},
+  {text:'D. 随便选一个，不纠结',score:45,label:'随缘'}
+]},
+nervous:{q:'化学推断题。你感觉脑子有点不够用了，前面的物理已经消耗了太多精力。',opts:[
+  {text:'A. 深呼吸，告诉自己冷静',score:75,label:'调节'},
+  {text:'B. 有些烦躁，静不下心',score:55,label:'烦躁'},
+  {text:'C. 强迫自己集中注意力',score:70,label:'专注'},
+  {text:'D. 随便选一个，不想再纠结',score:50,label:'放弃'}
+]},
+county:{q:'化学推断题。县城中学的化学老师总说，化学是穷人的科学，因为不需要太多天赋。',opts:[
+  {text:'A. 认真分析，不辜负老师',score:85,label:'珍惜'},
+  {text:'B. 想起老师的教导，有信心了',score:80,label:'鼓励'},
+  {text:'C. 告诉自己踏实分析',score:82,label:'踏实'},
+  {text:'D. 尽力就好',score:75,label:'平常心'}
+]},
+competition:{q:'化学推断题。你更擅长物理，但化学也不差。',opts:[
+  {text:'A. 用逻辑思维推断',score:82,label:'逻辑'},
+  {text:'B. 觉得化学不如物理有意思',score:65,label:'偏好'},
+  {text:'C. 认真分析，不丢分',score:85,label:'严谨'},
+  {text:'D. 快速做完，把时间留给物理',score:75,label:'效率'}
+]},
+leftbehind:{q:'化学推断题。你想起在实验室里独自做实验的日子。',opts:[
+  {text:'A. 独立思考，相信自己的能力',score:85,label:'独立'},
+  {text:'B. 想起那些独自实验的时光',score:80,label:'回忆'},
+  {text:'C. 有些紧张，但告诉自己要冷静',score:75,label:'调节'},
+  {text:'D. 认真分析，一分一分地拿',score:88,label:'踏实'}
+]},
+familyCrisis:{q:'化学推断题。元素周期表在你脑海中缓缓旋转，让你暂时忘记烦恼。',opts:[
+  {text:'A. 专注分析，暂时逃避',score:80,label:'逃避'},
+  {text:'B. 觉得这题很难，有些烦躁',score:55,label:'烦躁'},
+  {text:'C. 把做题当作放松',score:75,label:'放松'},
+  {text:'D. 认真分析，不管结果如何',score:82,label:'专注'}
+]},
+preadmit:{q:'化学推断题。化学是你的强项之一。推断题？小菜一碟。',opts:[
+  {text:'A. 自信地分析，快速解答',score:90,label:'自信'},
+  {text:'B. 觉得这题很简单',score:80,label:'正常'},
+  {text:'C. 认真检查，确保不丢分',score:85,label:'谨慎'},
+  {text:'D. 快速做完，检查一遍',score:82,label:'效率'}
+]},
+slackoff:{q:'化学推断题。曾经觉得无聊的科目，现在却觉得每个方程式都很珍贵。',opts:[
+  {text:'A. 认真地分析，珍惜这次机会',score:80,label:'珍惜'},
+  {text:'B. 觉得有些吃力，但坚持分析',score:70,label:'坚持'},
+  {text:'C. 想起那些摆烂的日子，有些后悔',score:65,label:'后悔'},
+  {text:'D. 告诉自己，现在开始还不晚',score:75,label:'觉醒'}
+]}
+},
+biology:{
+normal:{q:'生物遗传题。最后一科，你已经很累了，但你知道这是最后的机会。',opts:[
+  {text:'A. 集中注意力，认真分析',score:90,label:'专注'},
+  {text:'B. 有些疲惫，但坚持做完',score:75,label:'坚持'},
+  {text:'C. 用乘法原理计算',score:85,label:'方法'},
+  {text:'D. 随便写一个，想赶紧结束',score:50,label:'放弃'}
+]},
+repeat:{q:'生物遗传题。最后一科了。去年的这个时候，你在考场外哭了一场。今年不会了。',opts:[
+  {text:'A. 告诉自己这次不一样',score:85,label:'决心'},
+  {text:'B. 想起去年的失败，有些紧张',score:60,label:'紧张'},
+  {text:'C. 冷静分析，按步骤来',score:82,label:'冷静'},
+  {text:'D. 快速做完，不想再回忆',score:70,label:'效率'}
+]},
+art:{q:'生物遗传题。生物！文科性质的理科科目，背过的东西都能写上来。',opts:[
+  {text:'A. 努力回忆知识点',score:70,label:'记忆'},
+  {text:'B. 凭感觉写',score:55,label:'感觉'},
+  {text:'C. 用背过的公式分析',score:75,label:'方法'},
+  {text:'D. 有些懵，但坚持写完',score:65,label:'坚持'}
+]},
+science:{q:'生物遗传题。生物说实话不如物理化学那么有把握，但计算题没问题。',opts:[
+  {text:'A. 用逻辑思维分析',score:85,label:'逻辑'},
+  {text:'B. 觉得生物不如理科有意思',score:65,label:'偏好'},
+  {text:'C. 认真计算，确保正确',score:88,label:'严谨'},
+  {text:'D. 快速做完，检查一遍',score:80,label:'效率'}
+]},
+biased:{q:'生物遗传题。生物是你的强项，遗传题和生态题你都很有信心。',opts:[
+  {text:'A. 自信地分析，快速解答',score:90,label:'自信'},
+  {text:'B. 觉得这题很简单',score:80,label:'正常'},
+  {text:'C. 认真检查，确保不丢分',score:88,label:'谨慎'},
+  {text:'D. 用经典比例9:3:3:1',score:85,label:'方法'}
+]},
+nervous:{q:'生物遗传题。最后一科……你已经快撑不住了。但你知道，再坚持一下就好。',opts:[
+  {text:'A. 深呼吸，告诉自己坚持',score:80,label:'坚持'},
+  {text:'B. 有些疲惫，静不下心',score:55,label:'疲惫'},
+  {text:'C. 强迫自己集中注意力',score:75,label:'专注'},
+  {text:'D. 随便写一个，想赶紧结束',score:50,label:'放弃'}
+]},
+county:{q:'生物遗传题。县城中学的生物老师是代课老师，但你学得很认真。',opts:[
+  {text:'A. 认真分析，不辜负自己',score:85,label:'珍惜'},
+  {text:'B. 想起老师的教导',score:80,label:'鼓励'},
+  {text:'C. 告诉自己踏实分析',score:82,label:'踏实'},
+  {text:'D. 尽力就好',score:75,label:'平常心'}
+]},
+competition:{q:'生物遗传题。你更擅长物理化学，但生物也不差。',opts:[
+  {text:'A. 用逻辑思维推断',score:82,label:'逻辑'},
+  {text:'B. 觉得生物不如物理有意思',score:65,label:'偏好'},
+  {text:'C. 认真分析，不丢分',score:85,label:'严谨'},
+  {text:'D. 快速做完，把时间留给检查',score:78,label:'效率'}
+]},
+leftbehind:{q:'生物遗传题。你想起小时候在田野里抓昆虫的日子。',opts:[
+  {text:'A. 那些回忆成了你学生物的动力',score:85,label:'动力'},
+  {text:'B. 想起那些独自观察的时光',score:80,label:'回忆'},
+  {text:'C. 有些感慨，但专注答题',score:78,label:'专注'},
+  {text:'D. 认真分析，一分一分地拿',score:88,label:'踏实'}
+]},
+familyCrisis:{q:'生物遗传题。最后一科了。你告诉自己，要坚持到最后。',opts:[
+  {text:'A. 坚持到底，不放弃',score:85,label:'坚持'},
+  {text:'B. 觉得这题很难，有些烦躁',score:55,label:'烦躁'},
+  {text:'C. 把做题当作暂时的解脱',score:70,label:'逃避'},
+  {text:'D. 认真分析，不管结果如何',score:82,label:'专注'}
+]},
+preadmit:{q:'生物遗传题。生物是你的优势科目。遗传题？轻松拿下。',opts:[
+  {text:'A. 自信地分析，快速解答',score:90,label:'自信'},
+  {text:'B. 觉得这题很简单',score:85,label:'正常'},
+  {text:'C. 认真检查，确保不丢分',score:88,label:'谨慎'},
+  {text:'D. 用棋盘格逐一分析',score:82,label:'方法'}
+]},
+slackoff:{q:'生物遗传题。曾经摆烂的你，现在却觉得每个知识点都值得珍惜。',opts:[
+  {text:'A. 认真地分析，珍惜这次机会',score:80,label:'珍惜'},
+  {text:'B. 觉得有些吃力，但坚持分析',score:70,label:'坚持'},
+  {text:'C. 想起那些摆烂的日子，有些后悔',score:65,label:'后悔'},
+  {text:'D. 告诉自己，现在开始还不晚',score:75,label:'觉醒'}
+]}
+}
+};
+
+const NIGHT_QUESTIONS={
+normal:{q:'考前一晚，你躺在床上，脑海中浮现出这三年的点点滴滴。如果让你用一个词来形容你的高中生活，你会选择……',opts:[
+  {text:'A. 充实——每一天都在为梦想努力',score:85,label:'充实'},
+  {text:'B. 遗憾——还有很多没做完的题',score:65,label:'遗憾'},
+  {text:'C. 成长——不仅是知识，还有心智',score:90,label:'成长'},
+  {text:'D. 解脱——终于要结束这一切了',score:50,label:'解脱'}
+]},
+repeat:{q:'考前一晚，你想起去年这个时候的自己。如果给去年的你说一句话，你会说……',opts:[
+  {text:'A. 谢谢你的坚持，今年我会做得更好',score:90,label:'感恩'},
+  {text:'B. 对不起，我让你失望了',score:55,label:'愧疚'},
+  {text:'C. 别担心，一切都会过去的',score:75,label:'安慰'},
+  {text:'D. 再来一次，我还是会这么选择',score:85,label:'无悔'}
+]},
+art:{q:'考前一晚，你看着画板上的未完成作品。如果让你选择，你会……',opts:[
+  {text:'A. 继续画画，用艺术表达心情',score:75,label:'艺术'},
+  {text:'B. 收起画板，专心复习文化课',score:85,label:'专注'},
+  {text:'C. 两者兼顾，平衡发展',score:80,label:'平衡'},
+  {text:'D. 随便吧，反正文化课不是强项',score:50,label:'放弃'}
+]},
+science:{q:'考前一晚，你在想明天的考试。对于理科，你的态度是……',opts:[
+  {text:'A. 信心满满，理科是我的强项',score:90,label:'自信'},
+  {text:'B. 有些紧张，怕出难题',score:65,label:'紧张'},
+  {text:'C. 平常心，发挥正常水平就好',score:80,label:'平常心'},
+  {text:'D. 快速过一遍公式，早点休息',score:75,label:'务实'}
+]},
+biased:{q:'考前一晚，你想着自己的强科和弱科。如果能让时间倒流，你会……',opts:[
+  {text:'A. 多花时间在弱科上',score:75,label:'补弱'},
+  {text:'B. 继续强化强科，以长补短',score:80,label:'扬长'},
+  {text:'C. 寻找平衡，全面发展',score:85,label:'平衡'},
+  {text:'D. 接受现实，尽力而为',score:70,label:'接受'}
+]},
+nervous:{q:'考前一晚，你感到有些紧张。为了缓解压力，你会……',opts:[
+  {text:'A. 深呼吸，告诉自己不要慌',score:85,label:'自我调节'},
+  {text:'B. 再复习一遍重点内容',score:60,label:'临时抱佛脚'},
+  {text:'C. 听音乐，放松身心',score:80,label:'放松'},
+  {text:'D. 早点睡觉，养精蓄锐',score:90,label:'休息'}
+]},
+county:{q:'考前一晚，你想起县城中学的老师和同学们。你最想对他们说……',opts:[
+  {text:'A. 谢谢你们，没有你们就没有今天的我',score:90,label:'感恩'},
+  {text:'B. 我会努力，不给家乡丢脸',score:85,label:'决心'},
+  {text:'C. 无论结果如何，我都骄傲',score:80,label:'自信'},
+  {text:'D. 希望你们也能走出这里',score:75,label:'祝愿'}
+]},
+competition:{q:'考前一晚，你想着那些竞赛题和高考题的区别。你觉得……',opts:[
+  {text:'A. 竞赛思维帮助我更好地解题',score:85,label:'优势'},
+  {text:'B. 高考更注重基础，不能大意',score:80,label:'谨慎'},
+  {text:'C. 两者结合，发挥最好水平',score:90,label:'结合'},
+  {text:'D. 希望别出太简单的题',score:60,label:'期待'}
+]},
+leftbehind:{q:'考前一晚，你一个人坐在窗前。如果父母在身边，你会……',opts:[
+  {text:'A. 告诉他们你很好，不用担心',score:85,label:'坚强'},
+  {text:'B. 让他们陪你复习',score:70,label:'依赖'},
+  {text:'C. 什么都不说，就这样陪着',score:80,label:'陪伴'},
+  {text:'D. 告诉他们你爱他们',score:90,label:'表达'}
+]},
+familyCrisis:{q:'考前一晚，你想起那些独自承受的夜晚。你觉得……',opts:[
+  {text:'A. 这些经历让我更坚强',score:90,label:'坚强'},
+  {text:'B. 有时候真的很累',score:65,label:'疲惫'},
+  {text:'C. 我比同龄人更懂事',score:80,label:'早熟'},
+  {text:'D. 希望明天会更好',score:85,label:'希望'}
+]},
+preadmit:{q:'考前一晚，你想着那些保送的同学。如果当初……',opts:[
+  {text:'A. 我会选择保送，更轻松',score:60,label:'后悔'},
+  {text:'B. 我还是要参加高考，证明自己',score:90,label:'证明'},
+  {text:'C. 两条路都有道理',score:75,label:'理性'},
+  {text:'D. 不想了，专注当下',score:80,label:'专注'}
+]},
+slackoff:{q:'考前一晚，你想起那些摆烂的日子。如果时光倒流……',opts:[
+  {text:'A. 我会早点开始努力',score:85,label:'后悔'},
+  {text:'B. 现在努力也不晚',score:90,label:'觉醒'},
+  {text:'C. 那些日子也有意义',score:75,label:'接受'},
+  {text:'D. 珍惜现在，把握未来',score:80,label:'珍惜'}
+]}
+};
+
+const RANDOM_EVENTS={
+good:[
+{text:'你抬头看了看窗外，阳光正好，一阵微风吹过，心情突然好了起来。',effect:-8,icon:'☀️',charModifiers:{art:1.2,leftbehind:1.1}},
+{text:'这道题你刚好在昨天的模拟卷上做过类似的！心中一阵窃喜。',effect:-10,icon:'✨',charModifiers:{repeat:1.3,science:1.2,competition:1.2}},
+{text:'监考老师是你认识的一位温和的阿姨，她路过时轻轻拍了拍你的肩膀。',effect:-6,icon:'😊',charModifiers:{county:1.2,nervous:1.3}},
+{text:'你突然想起老师讲过的一个解题技巧，正好用在这道题上。',effect:-12,icon:'💡',charModifiers:{science:1.2,competition:1.3,preadmit:1.1}},
+{text:'前面的选择题你做得很顺，正确率应该不错，信心倍增。',effect:-7,icon:'🍀',charModifiers:{biased:1.2,nervous:0.8}},
+{text:'监考老师走过时轻声说："时间还充裕，慢慢做。"你点了点头，心安了一些。',effect:-9,icon:'⏰',charModifiers:{nervous:1.3,familyCrisis:1.1}},
+{text:'你从笔袋里摸出一颗薄荷糖，快速含进嘴里，清凉的感觉让你精神一振。',effect:-5,icon:'🍬',charModifiers:{art:1.1,slackoff:1.2}},
+{text:'考场里突然安静了几秒，你趁机深呼吸，感觉脑子清醒了不少。',effect:-8,icon:'🤫',charModifiers:{nervous:1.2,familyCrisis:1.1}}
+],
+bad:[
+{text:'你听到旁边同学翻卷子的速度比你快好多，心里一紧。',effect:10,icon:'😰',charModifiers:{nervous:1.4,repeat:1.2,slackoff:0.8}},
+{text:'抬头一看，监考老师正站在你斜后方盯着你，你的手心开始出汗。',effect:12,icon:'👀',charModifiers:{nervous:1.3,familyCrisis:1.2}},
+{text:'你突然发现答题卡涂串了一位！心跳加速，赶紧调整……',effect:15,icon:'😱',charModifiers:{nervous:1.4,repeat:1.1}},
+{text:'窗外突然开始施工，电钻声让你无法集中注意力。',effect:8,icon:'🔊',charModifiers:{county:0.8,leftbehind:0.9}},
+{text:'你发现自己有一道选择题忘记涂卡了，而监考老师说"还剩最后五分钟"。',effect:14,icon:'⏰',charModifiers:{nervous:1.3,timeSensitivity:1.2}},
+{text:'你的铅笔突然断了，而且你没有带备用铅笔。',effect:6,icon:'✏️',charModifiers:{county:0.7,leftbehind:0.8}},
+{text:'草稿纸快用完了，你举手示意监考老师，但老师似乎在忙别的事。',effect:9,icon:'📄',charModifiers:{nervous:1.2}},
+{text:'中途你突然想上厕所，但又不想浪费时间去，纠结之下压力更大了。',effect:11,icon:'🚻',charModifiers:{nervous:1.2,familyCrisis:1.1}},
+{text:'旁边的同学提前交卷了，你看了看自己的进度，心里更着急了。',effect:10,icon:'🏃',charModifiers:{nervous:1.3,repeat:1.2}},
+{text:'英语听力突然出现了杂音，你紧张得握紧了笔，生怕错过关键内容。',effect:13,icon:'📢',charModifiers:{nervous:1.3,art:1.1}}
+]
+};
+
+const CARE_MOMENTS=[
+{text:'考完语文走出考场，你看到妈妈在校门口等你。她递来一瓶温水和一块巧克力，什么也没多问，只是笑着说："走，回家吃饭。"你的心里暖暖的。',effect:-15,icon:'🧃',charModifiers:{county:1.3,leftbehind:1.4,familyCrisis:0.7,nervous:0.8}},
+{text:'中午休息时，班主任来到宿舍，给每个人发了一根红绳手链，说："戴着它，就像老师在给你们加油。"你低头看着手腕上的红绳，眼眶有些发热。',effect:-12,icon:'🧧',charModifiers:{repeat:1.2,art:1.1,slackoff:1.3}},
+{text:'下午开考前，你趴在桌上休息了一会儿。迷迷糊糊中听到广播里放了一首轻柔的歌，你深呼吸几次，感觉精神好了很多。',effect:-10,icon:'🎵',charModifiers:{nervous:1.3,familyCrisis:1.2}},
+{text:'考试间隙，你给好朋友发了一条消息："你还活着吗？"对方秒回："活着，但灵魂已出窍。"你笑出了声，压力好像小了很多。',effect:-13,icon:'💬',charModifiers:{art:1.2,slackoff:1.1}},
+{text:'走出考场，你看到爸爸远远地站在树荫下等你。他递来一瓶水，说了句："辛苦了。"然后你们一起慢慢走向回家的路。',effect:-14,icon:'🚶',charModifiers:{county:1.2,leftbehind:1.5,familyCrisis:0.6}},
+{text:'同学从旁边考场跑过来，递给你一颗糖："我妈给的，说是好运糖。"你接过糖，心里觉得暖暖的。',effect:-11,icon:'🍬',charModifiers:{art:1.2,competition:1.1}},
+{text:'你站在走廊的窗户边，对着远处的天空深呼吸了十秒。风轻轻吹过，带走了些许疲惫。',effect:-9,icon:'🌤️',charModifiers:{nervous:1.3,science:1.1}},
+{text:'中午吃饭时，你吃到了久违的鸡汤面。热热的汤下肚，感觉整个人都活过来了。',effect:-13,icon:'🍜',charModifiers:{county:1.3,leftbehind:1.2,repeat:1.1}},
+{text:'你想起早上出门前父母说的那句"尽力就好"，心里突然踏实了很多。',effect:-10,icon:'🏠',charModifiers:{leftbehind:1.4,familyCrisis:0.7,nervous:1.2}}
+];
+
+const NIGHT_TEXTS=[
+'晚上十一点，你躺在床上，却怎么也睡不着。明天的这个时候，你就坐在考场里了。你翻了个身，看着天花板上那道细细的裂缝，想起这三年的点点滴滴——早起晚睡的教室、写不完的试卷、还有那些偷偷抹掉的眼泪。"没关系，"你对自己说，"尽力就好。"你闭上眼睛，慢慢进入了梦乡……',
+'夜深了，书桌上的台灯还亮着。你把最后一本笔记合上，深吸一口气。准考证就放在桌角，照片上的你笑得有些僵硬。妈妈推门进来，放下一杯热牛奶，说了句"早点睡"就出去了。你端起牛奶喝了一口，温温的，甜甜的。也许，明天会是一个好天气。',
+'考前最后一晚，你决定不再看书了。你站在阳台上，看着远处居民楼里星星点点的灯光——每一扇亮着的窗户后面，是不是也有一个和你一样睡不着的人？你握了握拳头，对自己说："三年了，该来的总要来。加油吧。"'
+];
+
+const SUBJECT_INTROS={
+chinese:{normal:'第一科，语文。你深吸一口气，告诉自己：好的开始是成功的一半。',repeat:'又是语文。去年作文跑题的阴影还在，但这次你准备好了。',art:'语文……集训大半年没怎么上文化课，阅读理解全靠语感吧。',science:'语文而已，又不是数学。你自信地翻开试卷。',biased:'语文是你最稳的科目，至少作文不会翻车。',nervous:'语文……去年模拟考语文发挥失常的画面突然涌上来。你甩了甩头，不去想。',county:'语文，你最熟悉的科目。县城中学的老师说过，语文是穷孩子的出路。',competition:'语文？你更擅长用公式说话。不过阅读理解的逻辑性还不错。',leftbehind:'语文……你想起小时候在院子里借着月光读书的日子。',familyCrisis:'语文。你深吸一口气，把那些说不出口的情绪都压在笔尖。',preadmit:'语文是你的强项。本来可以保送的你，证明自己的方式就是高考。',slackoff:'语文……你曾经连书都不愿意翻，现在却想好好写每一个字。'},
+math:{normal:'数学来了。你的心跳微微加速，手心有些出汗。',repeat:'数学，去年的噩梦。那道导数题你到现在还记得。但今年不一样了。',art:'数学……你看了看题目，深吸一口气，能拿一分是一分。',science:'数学？你嘴角微微上扬。这是你的主场。',biased:'数学是你的强项，但前面那道立体几何让你皱了皱眉。',nervous:'数学……你的手开始微微发抖。去年的数学只考了89分。',county:'数学。县城中学的教学楼很旧，但数学老师很厉害。你有信心。',competition:'数学竞赛题比这难多了。你拿起笔，思路清晰。',leftbehind:'数学……你没有人可以问，只能靠自己一道一道地啃。',familyCrisis:'数学。你告诉自己冷静下来，一步一步来。',preadmit:'数学是你证明自己的武器。每一分都要稳稳拿下。',slackoff:'数学……基础落下太多了。你能做的，就是抓住能拿的分。'},
+english:{normal:'下午的英语考试，你调整了一下状态，戴上耳机等待听力开始。',repeat:'英语听力，去年设备出了点小问题影响了发挥。希望今年顺利。',art:'英语！集训时每天背单词的习惯还是有点用的。',science:'英语……理科生的痛。不过阅读理解和完形填空可以靠逻辑。',biased:'英语是你的弱势科目，听力部分你有些紧张。',nervous:'英语……去年英语作文写偏题了。你深呼吸，告诉自己不要想过去。',county:'英语。县城中学的英语老师口音很重，你基本靠自学。',competition:'英语……你更擅长用公式解题。不过阅读理解还能应付。',leftbehind:'英语……你想起父母在电话里总问你英语考得怎么样。',familyCrisis:'英语。你戴上耳机，隔绝外界的杂音，专注于每一个单词。',preadmit:'英语是你的优势科目。发挥稳定，不要给自己压力。',slackoff:'英语……曾经摆烂的你，现在只想多背一个单词。'},
+physics:{normal:'物理开考了。力学、电磁学……你在心里默默过了一遍公式。',repeat:'物理，去年最后一道大题没做完。这次要合理分配时间。',art:'物理……你看着题目上的受力分析图，感觉像在看天书。',science:'物理！你的竞赛不是白比的。这些题目在你眼里清晰明了。',biased:'物理是你的强项之一，电磁学部分你很有信心。',nervous:'物理……去年模拟考物理选择题错了五个。你握紧了笔。',county:'物理。县城中学的实验室很小，但你的梦想很大。',competition:'物理竞赛是你的主场。这些题目，你信手拈来。',leftbehind:'物理……你想起一个人在教室里做题的晚自习。',familyCrisis:'物理。你告诉自己，分析题目就像分析生活，一步一步来。',preadmit:'物理是你擅长的科目。稳住，不要失误。',slackoff:'物理……曾经放弃的科目，现在你想试着面对。'},
+chemistry:{normal:'化学部分。元素周期表在你脑海中浮现，你开始逐一分析题目。',repeat:'化学，去年推断题全对了。保持这个状态。',art:'化学……方程式背了不少，但推断题还是有点虚。',science:'化学还行，虽然不如物理那么拿手，但基础题没问题。',biased:'化学是你的弱势，有机推断让你头疼。',nervous:'化学……你感觉脑子有点不够用了，前面的物理已经消耗了太多精力。',county:'化学。县城中学的化学老师总说，化学是穷人的科学，因为不需要太多天赋。',competition:'化学……你更擅长物理，但化学也不差。',leftbehind:'化学……你想起在实验室里独自做实验的日子。',familyCrisis:'化学。元素周期表在你脑海中缓缓旋转，让你暂时忘记烦恼。',preadmit:'化学是你的强项之一。推断题？小菜一碟。',slackoff:'化学……曾经觉得无聊的科目，现在却觉得每个方程式都很珍贵。'},
+biology:{normal:'最后一科，生物。你已经很累了，但你知道这是最后的机会。',repeat:'最后一科了。去年的这个时候，你在考场外哭了一场。今年不会了。',art:'生物！文科性质的理科科目，背过的东西都能写上来。',science:'生物……说实话不如物理化学那么有把握，但计算题没问题。',biased:'生物是你的强项，遗传题和生态题你都很有信心。',nervous:'最后一科……你已经快撑不住了。但你知道，再坚持一下就好。',county:'生物。县城中学的生物老师是代课老师，但你学得很认真。',competition:'生物……你更擅长物理化学，但生物也不差。',leftbehind:'生物。你想起小时候在田野里抓昆虫的日子。',familyCrisis:'生物。最后一科了。你告诉自己，要坚持到最后。',preadmit:'生物是你的优势科目。遗传题？轻松拿下。',slackoff:'生物……曾经摆烂的你，现在却觉得每个知识点都值得珍惜。'},
+history:{normal:'历史考试开始了。你翻开试卷，那些历史事件在脑海中缓缓浮现。',repeat:'又是历史。去年材料分析题失了分，这次要仔细审题。',art:'历史……你回忆着那些历史事件，试着理清脉络。',science:'历史考试。你更擅长用逻辑思维来分析历史事件。',biased:'历史是你的强项，那些时间线和事件你记得很清楚。',nervous:'历史……你有些紧张，生怕记混了那些历史事件。',county:'历史。县城中学的历史老师说过，历史是穷孩子的出路。',competition:'历史考试。你习惯用竞赛思维来分析问题。',leftbehind:'历史……你想起爷爷奶奶讲的那些过去的故事。',familyCrisis:'历史。你试着把那些历史事件和现实生活联系起来。',preadmit:'历史是你的优势科目。发挥稳定，不要给自己压力。',slackoff:'历史……曾经摆烂的你，现在却觉得每个历史事件都值得思考。'},
+geography:{normal:'地理考试开始了。你看着地图，开始分析地形、气候和人文因素。',repeat:'又是地理。去年综合分析题失了分，这次要仔细审题。',art:'地理……你回忆着那些地理知识，试着分析图表。',science:'地理考试。你更擅长用逻辑思维来分析地理现象。',biased:'地理是你的强项，那些自然和人文因素你分析得很清楚。',nervous:'地理……你有些紧张，生怕分析错了那些图表。',county:'地理。县城中学的地理老师说过，地理是穷孩子的出路。',competition:'地理考试。你习惯用竞赛思维来分析问题。',leftbehind:'地理……你想起小时候在田野里观察的那些自然现象。',familyCrisis:'地理。你试着把那些地理现象和现实生活联系起来。',preadmit:'地理是你的优势科目。发挥稳定，不要给自己压力。',slackoff:'地理……曾经摆烂的你，现在却觉得每个地理现象都值得思考。'},
+politics:{normal:'政治考试开始了。你阅读材料，开始运用政治理论知识来分析问题。',repeat:'又是政治。去年论述题失了分，这次要仔细审题。',art:'政治……你回忆着那些政治理论，试着分析问题。',science:'政治考试。你更擅长用逻辑思维来分析政治现象。',biased:'政治是你的强项，那些理论和知识点你记得很清楚。',nervous:'政治……你有些紧张，生怕写漏了那些要点。',county:'政治。县城中学的政治老师说过，政治是穷孩子的出路。',competition:'政治考试。你习惯用竞赛思维来分析问题。',leftbehind:'政治……你想起爷爷奶奶讲的那些过去的故事。',familyCrisis:'政治。你试着把那些政治理论和现实生活联系起来。',preadmit:'政治是你的优势科目。发挥稳定，不要给自己压力。',slackoff:'政治……曾经摆烂的你，现在却觉得每个政治理论都值得思考。'}
+};
+
+let state={
+  charId:'normal',
+  pressure:30,
+  scores:{},
+  subjectIdx:0,
+  questionIdx:0,
+  phase:'title',
+  timerInterval:null,
+  timeLeft:15,
+  timerTotal:15,
+  totalQuestions:0,
+  answeredQuestions:0,
+  usedCareIdx:0,
+  history:[],
+  maxPressureReached:0,
+  lastSubjectScores:{},
+  selectedSubjects:[],
+  firstSubject:null,
+  secondSubjects:[],
+  triggered:false,
+  triggerUsed:false,
+  careEventTriggered:0,
+  nightBonus:0,
+  cramming:false,
+  crammingChosen:false,
+  consecutiveGoodChoices:0,
+  countyParentCareTriggered:false,
+  pressureBySubject:{},
+  consecutiveScienceGood:0,
+  consecutiveCompGood:0,
+  careSugarSoup:false,
+  careParentSoup:false,
+  careParentSMS:false,
+  careWarmFood:false,
+  streakBonusActive:false,
+  pressureWasHigh:false,
+  pressureRecovered:false
+};
+
+let globalStats={
+  totalRounds:0,
+  roundsWithPressureOver85:0,
+  consecutiveLowScores:0,
+  scienceGodUsed:false,
+  scienceGodScore:0,
+  highScore:0,
+  charPlayCounts:{},
+  charTriggerCounts:{},
+  charHighScores:{},
+  lastTriggeredChar:null
+};
+
+function getChar(){return CHARS.find(c=>c.id===state.charId)}
+function clamp(v,min,max){return Math.max(min,Math.min(max,v))}
+function rand(arr){return arr[Math.floor(Math.random()*arr.length)]}
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+
+function updateBodyPhase(){
+  document.body.className=document.body.className.replace(/phase-\S+/g,'').replace(/time-\S+/g,'').trim();
+  const phaseMap={title:'phase-title',subject_select:'phase-title',night:'phase-night',subject_intro:'phase-question',question:'phase-question',event:'phase-event',care:'phase-care',subject_done:'phase-question',ending:'phase-ending'};
+  const phaseClass=phaseMap[state.phase];
+  if(phaseClass)document.body.classList.add(phaseClass);
+  if(['question','event','subject_intro','subject_done'].includes(state.phase)){
+    if(state.subjectIdx<2){
+      document.body.classList.add('time-morning');
+    }else{
+      document.body.classList.add('time-afternoon');
+    }
+  }
+}
+
+function updateBrightness(bonusBright){
+  const overlay=document.getElementById('brightness-overlay');
+  if(!overlay)return;
+  const morningSubjects=[0,3,4];
+  const afternoonSubjects=[1,2,5];
+  let opacity=0.0;
+  let r=255,g=250,b=220;
+  if(morningSubjects.includes(state.subjectIdx)){
+    opacity=0.03;r=255;g=245;b=200;
+  }else if(afternoonSubjects.includes(state.subjectIdx)){
+    opacity=0.08;r=255;g=200;b=130;
+  }
+  if(bonusBright)opacity=Math.max(0,opacity-0.05);
+  overlay.style.background=`rgba(${r},${g},${b},${opacity})`;
+}
+
+function calculateSubjectScore(subjId,baseScore){
+  const char=getChar();
+  const h=char.hidden;
+  const timeSensitivityFactor=h.timeSensitivity/100;
+  let randomMin=0.65-(timeSensitivityFactor*0.15);
+  const randomMax=1.05;
+  
+  if(state.cramming&&state.subjectIdx===0){
+    randomMin+=0.04;
+  }else if(state.cramming&&state.subjectIdx>0){
+    randomMin-=0.03;
+  }
+  
+  const pressureDiff=Math.max(0,state.pressure-h.pressureResist);
+  const pressureOverBy10=Math.floor(pressureDiff/10);
+  if(pressureOverBy10>0){
+    randomMin-=pressureOverBy10*0.05;
+  }
+  
+  if(state.streakBonusActive&&!state.triggerUsed){
+    randomMin+=0.03;
+  }
+  
+  let randomCoeff=randomMin+Math.random()*(randomMax-randomMin);
+  
+  let score=h.strength*randomCoeff;
+  
+  if(pressureDiff>0){
+    const pressurePenalty=pressureDiff*0.3;
+    score-=pressurePenalty;
+  }
+  const lastSubjScore=state.lastSubjectScores[subjId]||0;
+  if(lastSubjScore>0&&lastSubjScore<60){
+    const resilienceBoost=h.resilience*0.15;
+    score+=resilienceBoost;
+  }
+  if(h.subjectBias&&h.subjectBias[subjId]!==undefined){
+    score+=h.subjectBias[subjId];
+  }
+  score=score*0.3+baseScore*0.7;
+  
+  if(state.charId==='repeat'&&state.triggered&&!state.triggerUsed&&state.subjectIdx===0){
+    score+=15;
+  }
+  
+  return Math.round(clamp(score,0,100));
+}
+
+function updateMaxPressure(){
+  if(state.pressure>state.maxPressureReached){
+    state.maxPressureReached=state.pressure;
+  }
+  const currentSubjectId=state.selectedSubjects[state.subjectIdx];
+  if(currentSubjectId){
+    if(!state.pressureBySubject[currentSubjectId]){
+      state.pressureBySubject[currentSubjectId]=0;
+    }
+    if(state.pressure>state.pressureBySubject[currentSubjectId]){
+      state.pressureBySubject[currentSubjectId]=state.pressure;
+    }
+  }
+}
+
+function checkHiddenTrigger(){
+  if(state.triggered||state.triggerUsed)return;
+  const char=getChar();
+  const charId=state.charId;
+  
+  if(charId==='normal'){
+    if(state.consecutiveGoodChoices>=2){
+      state.triggered=true;
+      showTriggerNotification('喝口热汤也挺好','全科目+8分');
+    }
+  }else if(charId==='repeat'){
+    if(state.pressure>=60){
+      state.triggered=true;
+      showTriggerNotification('又是这个位置','第一科+15分');
+    }
+  }else if(charId==='art'){
+    if(state.careSugarSoup){
+      state.triggered=true;
+      showTriggerNotification('集训之外的甜','全科目+10分');
+    }
+  }else if(charId==='science'){
+    if(state.consecutiveScienceGood>=2){
+      state.triggered=true;
+      showTriggerNotification('这题我会','物理+20分');
+    }
+  }else if(charId==='biased'){
+    if(state.pressure>=60){
+      state.triggered=true;
+      showTriggerNotification('偏得理直气壮','最高分科目+25');
+    }
+  }else if(charId==='nervous'){
+    if(state.pressure>=50&&state.subjectIdx>=3){
+      state.triggered=true;
+      showTriggerNotification('手又开始抖了','后三科+12分');
+    }
+  }else if(charId==='county'){
+    if(state.careParentSoup){
+      state.triggered=true;
+      showTriggerNotification('家里的味道','压力-20');
+    }
+  }else if(charId==='competition'){
+    if(state.consecutiveCompGood>=2){
+      state.triggered=true;
+      showTriggerNotification('竞赛生的本能','物理/化学/生物各+10分');
+    }
+  }else if(charId==='leftbehind'){
+    if(state.careParentSMS||state.careWarmFood){
+      state.triggered=true;
+      showTriggerNotification('有人惦记','最终分+15');
+    }
+  }else if(charId==='familyCrisis'){
+    if(state.pressure>=65){
+      state.triggered=true;
+      showTriggerNotification('撑过就好','压力-25');
+    }
+  }else if(charId==='preadmit'){
+    if(state.consecutiveGoodChoices>=2&&state.subjectIdx>=3){
+      state.triggered=true;
+      showTriggerNotification('还要证明一次','后三科+15分');
+    }
+  }else if(charId==='slackoff'){
+    if(state.subjectIdx>=3&&state.consecutiveGoodChoices>=1){
+      state.triggered=true;
+      showTriggerNotification('现在开始也不晚','全科目+12分');
+    }
+  }
+}
+
+function showTriggerNotification(title,effect){
+  const notification=document.createElement('div');
+  notification.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:linear-gradient(135deg,rgba(246,211,101,.95),rgba(253,160,133,.9));color:#1a1a2e;padding:24px 32px;border-radius:16px;z-index:300;text-align:center;animation:fadeIn .5s ease;box-shadow:0 8px 32px rgba(0,0,0,.3)';
+  notification.innerHTML=`
+    <div style="font-size:1.2em;font-weight:700;margin-bottom:8px">🎯 ${title}</div>
+    <div style="font-size:.9em">${effect}</div>
+  `;
+  document.body.appendChild(notification);
+  setTimeout(()=>{
+    notification.style.transition='opacity .5s ease';
+    notification.style.opacity='0';
+    setTimeout(()=>notification.remove(),500);
+  },2000);
+}
+
+function applyTriggerBonus(){
+  if(!state.triggered||state.triggerUsed)return 0;
+  const charId=state.charId;
+  let bonus=0;
+  
+  if(charId==='normal'){
+    bonus=8*state.selectedSubjects.length;
+  }else if(charId==='repeat'){
+    bonus=0;
+  }else if(charId==='art'){
+    bonus=10*state.selectedSubjects.length;
+  }else if(charId==='science'&&state.selectedSubjects.includes('physics')){
+    bonus=20;
+  }else if(charId==='biased'){
+    bonus=0;
+  }else if(charId==='nervous'&&state.subjectIdx>=3){
+    bonus=36;
+  }else if(charId==='county'){
+    state.pressure=clamp(state.pressure-20,0,100);
+  }else if(charId==='competition'){
+    const scienceSubjects=['physics','chemistry','biology'];
+    bonus=state.selectedSubjects.filter(id=>scienceSubjects.includes(id)).length*10;
+  }else if(charId==='leftbehind'){
+    bonus=15;
+  }else if(charId==='familyCrisis'){
+    state.pressure=clamp(state.pressure-25,0,100);
+  }else if(charId==='preadmit'&&state.subjectIdx>=3){
+    bonus=45;
+  }else if(charId==='slackoff'){
+    bonus=12*state.selectedSubjects.length;
+  }
+  
+  state.triggerUsed=true;
+  state.streakBonusActive=false;
+  return bonus;
+}
+
+function loadUnlocks(){
+  try{
+    const d=JSON.parse(localStorage.getItem('gaokao_unlocks')||'{}');
+    CHARS.forEach(c=>{if(d[c.id])c.unlocked=true});
+  }catch(e){}
+}
+function saveUnlocks(){
+  const d={};CHARS.forEach(c=>{d[c.id]=c.unlocked});
+  localStorage.setItem('gaokao_unlocks',JSON.stringify(d));
+}
+function loadGlobalStats(){
+  try{
+    const d=JSON.parse(localStorage.getItem('gaokao_global_stats')||'{}');
+    globalStats={...globalStats,...d};
+  }catch(e){}
+}
+function saveGlobalStats(){
+  localStorage.setItem('gaokao_global_stats',JSON.stringify(globalStats));
+}
+function loadHistory(){
+  try{return JSON.parse(localStorage.getItem('gaokao_history')||'[]')}catch(e){return[]}
+}
+function saveHistory(h){localStorage.setItem('gaokao_history',JSON.stringify(h))}
+
+function updatePressureUI(changeAmount){
+  const p=state.pressure;
+  updateMaxPressure();
+  if(p>=70)state.pressureWasHigh=true;
+  if(state.pressureWasHigh&&p<50&&changeAmount!==undefined&&changeAmount<0){
+    state.pressureRecovered=true;
+    state.pressureWasHigh=false;
+  }
+  $('pressureVal').textContent=p+'%';
+  $('pressureFill').style.width=p+'%';
+  let cls='pressure-fill '+(p<40?'low':p<70?'mid':'high');
+  if(p>=70)cls+=' breathe';
+  $('pressureFill').className=cls;
+  if(changeAmount!==undefined&&changeAmount!==0){
+    showPressureChange(changeAmount);
+    const fill=$('pressureFill');
+    if(changeAmount>0){
+      fill.classList.add('flash-up');
+      setTimeout(()=>fill.classList.remove('flash-up'),600);
+    }else{
+      fill.classList.add('flash-down');
+      setTimeout(()=>fill.classList.remove('flash-down'),600);
+    }
+  }
+}
+
+function showPressureChange(amount){
+  const changeEl=$('pressureChange');
+  if(!changeEl)return;
+  changeEl.textContent=(amount>0?'+':'')+amount+'%';
+  changeEl.className='pressure-change show '+(amount>0?'positive':'negative');
+  setTimeout(()=>{changeEl.className='pressure-change'},1500);
+}
+
+function updateProgressText(){
+  const subjectId=state.selectedSubjects[state.subjectIdx];
+  const subj=SUBJECTS.find(s=>s.id===subjectId);
+  if(subj&&$('progressSubject')){
+    $('progressSubject').textContent=subj.name;
+    $('progressIndex').textContent=`第${state.subjectIdx+1}/${state.selectedSubjects.length}科`;
+  }
+}
+
+function showProgressText(v){$('progressText')?.classList.toggle('visible',v)}
+
+function showPressureBar(v){$('pressureWrap').classList.toggle('visible',v)}
+function showTimer(v){$('timerRing').classList.toggle('visible',v)}
+
+function updateTimerUI(){
+  const t=state.timeLeft;
+  const pct=state.timerTotal>0?t/state.timerTotal:0;
+  const offset=CIRC*(1-pct);
+  const circle=$('timerCircle');
+  const text=$('timerText');
+  circle.style.strokeDasharray=CIRC;
+  circle.style.strokeDashoffset=offset;
+  text.textContent=t;
+  if(t<=5){circle.classList.add('warn');text.classList.add('warn')}
+  else{circle.classList.remove('warn');text.classList.remove('warn')}
+  if(state.pressure>=85){
+    circle.classList.add('pressure-extreme');text.classList.add('pressure-extreme');
+    circle.classList.remove('pressure-high');text.classList.remove('pressure-high');
+  }else if(state.pressure>=70){
+    circle.classList.add('pressure-high');text.classList.add('pressure-high');
+    circle.classList.remove('pressure-extreme');text.classList.remove('pressure-extreme');
+  }else{
+    circle.classList.remove('pressure-high');text.classList.remove('pressure-high');
+    circle.classList.remove('pressure-extreme');text.classList.remove('pressure-extreme');
+  }
+}
+
+function startTimer(seconds,onDone){
+  clearInterval(state.timerInterval);
+  state.timeLeft=seconds;
+  state.timerTotal=seconds;
+  updateTimerUI();
+  showTimer(true);
+  state.timerInterval=setInterval(()=>{
+    state.timeLeft--;
+    updateTimerUI();
+    if(state.timeLeft<=0){
+      clearInterval(state.timerInterval);
+      showTimer(false);
+      onDone();
+    }
+  },1000);
+}
+function stopTimer(){clearInterval(state.timerInterval);showTimer(false)}
+
+function createStars(){
+  const c=$('stars');
+  for(let i=0;i<40;i++){
+    const s=document.createElement('div');s.className='star';
+    s.style.left=Math.random()*100+'%';
+    s.style.top=Math.random()*100+'%';
+    s.style.animationDelay=Math.random()*3+'s';
+    s.style.width=s.style.height=(1+Math.random()*2)+'px';
+    c.appendChild(s);
+  }
+}
+
+function render(html){
+  app.innerHTML='';
+  const div=document.createElement('div');
+  div.className='screen active';
+  div.innerHTML=html;
+  app.appendChild(div);
+  updateBodyPhase();
+  return div;
+}
+
+const ACHIEVEMENTS=[
+  {id:'first_round',name:'初次体验',desc:'完成第一轮游戏',icon:'🎯',hint:'开始游戏即可'},
+  {id:'high_scorer',name:'高分达人',desc:'单局得分超过600',icon:'⭐',hint:'努力答题吧'},
+  {id:'perfect',name:'完美发挥',desc:'单局得分超过680',icon:'🏆',hint:'清北水平'},
+  {id:'low_pressure',name:'心态平和',desc:'全程压力未超过60',icon:'😌',hint:'保持冷静'},
+  {id:'nervous_high',name:'逆风翻盘',desc:'用发挥失常型打出高分',icon:'💪',hint:'克服紧张'},
+  {id:'county_warrior',name:'县城战士',desc:'用县城考生完成游戏',icon:'🛡️',hint:'坚韧不拔'},
+  {id:'competition_master',name:'竞赛之王',desc:'用竞赛生打出最高分',icon:'👑',hint:'理科科目强势'},
+  {id:'trigger_normal',name:'喝口热汤也挺好',desc:'触发普通考生的隐藏属性',icon:'🍵',hint:'连续2次选择最优选项'},
+  {id:'trigger_repeat',name:'又是这个位置',desc:'触发复读生的隐藏属性',icon:'⏰',hint:'压力值达到60'},
+  {id:'trigger_art',name:'集训之外的甜',desc:'触发艺考生的隐藏属性',icon:'😴',hint:'触发糖或鸡汤类关怀'},
+  {id:'trigger_science',name:'这题我会',desc:'触发理科大神的隐藏属性',icon:'🔬',hint:'连续2次数学/物理选最优'},
+  {id:'trigger_biased',name:'偏得理直气壮',desc:'触发偏科战神的隐藏属性',icon:'⚖️',hint:'压力值达到60'},
+  {id:'trigger_nervous',name:'手又开始抖了',desc:'触发发挥失常型的隐藏属性',icon:'😰',hint:'压力值达到50'},
+  {id:'trigger_county',name:'家里的味道',desc:'触发县城考生的隐藏属性',icon:'🏠',hint:'触发父母或鸡汤类关怀'},
+  {id:'trigger_competition',name:'竞赛生的本能',desc:'触发竞赛生的隐藏属性',icon:'🧠',hint:'连续2次在物理/化学/生物选最优'},
+  {id:'trigger_leftbehind',name:'有人惦记',desc:'触发留守儿童的隐藏属性',icon:'💭',hint:'触发父母短信或温暖食物关怀'},
+  {id:'trigger_familyCrisis',name:'撑过就好',desc:'触发家庭变故型的隐藏属性',icon:'💪',hint:'压力值达到65'},
+  {id:'trigger_preadmit',name:'还要证明一次',desc:'触发保送边缘型的隐藏属性',icon:'✨',hint:'连续2次选择最优选项'},
+  {id:'trigger_slackoff',name:'现在开始也不晚',desc:'触发摆烂觉醒型的隐藏属性',icon:'🌅',hint:'完成3科后选择最优选项'},
+  {id:'all_chars',name:'全角色解锁',desc:'解锁所有12个角色',icon:'🎭',hint:'收集达人'}
+];
+
+function renderTitle(){
+  state.phase='title';
+  showPressureBar(false);
+  showTimer(false);
+  showProgressText(false);
+  updateBrightness();
+  loadUnlocks();
+  loadGlobalStats();
+  loadAchievements();
+  
+  const unlockedChars=CHARS.filter(c=>c.unlocked);
+  const history=loadHistory();
+  const charLastScore={};
+  for(let i=history.length-1;i>=0;i--){
+    const h=history[i];
+    if(!charLastScore[h.char])charLastScore[h.char]=h.total;
+  }
+  let charsHtml=unlockedChars.map(c=>{
+    const playCount=globalStats.charPlayCounts?.[c.id]||0;
+    const triggerCount=globalStats.charTriggerCounts?.[c.id]||0;
+    const charHighScore=globalStats.charHighScores?.[c.id]||0;
+    const lastScore=charLastScore[c.id];
+    const countBadge=playCount>0?`<span class="mod-tag">${playCount}次</span>`:'';
+    const triggerBadge=triggerCount>0?`<span class="mod-tag" style="background:rgba(246,211,101,.25);color:#b8860b;font-weight:600">✦ 已触发</span>`:'';
+    const highScoreBadge=charHighScore>0?`<span class="mod-tag" style="background:rgba(67,233,123,.15);color:#2d8a4e">${charHighScore}分</span>`:'';
+    const lastScoreBadge=lastScore!==undefined?`<div style="font-size:.65em;color:var(--text-dim);margin-top:3px">最近 ${lastScore}分</div>`:'';
+    const glowClass=globalStats.lastTriggeredChar===c.id?' trigger-glow':'';
+    return `
+    <div class="char-card${glowClass}" data-char="${c.id}" onclick="selectChar('${c.id}')">
+      <div class="char-name">${c.name}</div>
+      <div class="char-modifiers">
+        <span class="mod-tag">${c.tag}</span>
+        ${highScoreBadge}
+        ${countBadge}
+        ${triggerBadge}
+      </div>
+      ${lastScoreBadge}
+    </div>`;
+  }).join('');
+
+  const highScore=globalStats.highScore||0;
+  const totalRounds=globalStats.totalRounds||0;
+  let statsHtml='';
+  if(totalRounds>0){
+    statsHtml=`<div style="margin-bottom:12px;padding:10px;background:rgba(0,0,0,.04);border-radius:8px;font-size:.8em;color:var(--text-dim)">
+      <span>最高: <strong style="color:var(--accent)">${highScore}分</strong></span> · 
+      <span>轮次: <strong style="color:var(--accent)">${totalRounds}</strong></span>
+    </div>`;
+  }
+
+  const unlockedAchievements=ACHIEVEMENTS.filter(a=>a.achieved).length;
+  let achievementBtnHtml=`<button class="btn btn-small mt16" onclick="showAchievementsModal()" style="background:rgba(0,0,0,.06);color:#1a1a2e;border:1px solid rgba(0,0,0,.1)">🏆 成就 (${unlockedAchievements}/${ACHIEVEMENTS.length})</button>`;
+
+  render(`
+    <div class="card" style="text-align:center">
+      <h1>高考模拟器</h1>
+      <p class="subtitle">一场关于青春、压力与成长的考试</p>
+      ${statsHtml}
+      <p style="font-size:.82em;color:var(--text-dim);margin-bottom:12px">选择你的身份，走进考场</p>
+      <div class="char-grid">${charsHtml}</div>
+      ${achievementBtnHtml}
+    </div>`);
+}
+
+function loadAchievements(){
+  try{
+    const d=JSON.parse(localStorage.getItem('gaokao_achievements')||'{}');
+    ACHIEVEMENTS.forEach(a=>{a.achieved=d[a.id]||false});
+  }catch(e){}
+}
+
+function saveAchievements(){
+  const d={};ACHIEVEMENTS.forEach(a=>{d[a.id]=a.achieved});
+  localStorage.setItem('gaokao_achievements',JSON.stringify(d));
+}
+
+function unlockAchievement(id){
+  const a=ACHIEVEMENTS.find(x=>x.id===id);
+  if(a&&!a.achieved){
+    a.achieved=true;
+    saveAchievements();
+    return true;
+  }
+  return false;
+}
+
+function renderAchievements(){
+  const unlockedCount=ACHIEVEMENTS.filter(a=>a.achieved).length;
+  let itemsHtml=ACHIEVEMENTS.map(a=>{
+    const cls=a.achieved?'unlocked':'locked';
+    const statusText=a.achieved?'✓ 已解锁':'🔒 未解锁';
+    return `<div class="achievement-item-new ${cls}">
+      <span class="achievement-icon-new">${a.icon}</span>
+      <div class="achievement-info">
+        <div class="achievement-name">${a.name}</div>
+        <div class="achievement-desc">${a.desc}</div>
+        ${!a.achieved?`<div class="achievement-hint">${a.hint}</div>`:''}
+      </div>
+      <div class="achievement-status">${statusText}</div>
+    </div>`;
+  }).join('');
+  
+  return `<div class="achievements-list">${itemsHtml}</div>`;
+}
+
+window.showAchievementsModal=function(){
+  const modal=document.createElement('div');
+  modal.className='achievements-modal';
+  modal.id='achievementsModal';
+  modal.onclick=(e)=>{if(e.target===modal)closeAchievementsModal()};
+  
+  const content=document.createElement('div');
+  content.className='achievements-modal-content';
+  content.innerHTML=`
+    <button class="achievements-modal-close" onclick="closeAchievementsModal()">×</button>
+    <div class="achievements-modal-title">🏆 成就系统</div>
+    ${renderAchievements()}
+  `;
+  
+  modal.appendChild(content);
+  document.body.appendChild(modal);
+};
+
+window.closeAchievementsModal=function(){
+  const modal=document.getElementById('achievementsModal');
+  if(modal)modal.remove();
+};
+
+window.selectChar=function(id){
+  state.charId=id;
+  globalStats.lastTriggeredChar=null;
+  saveGlobalStats();
+  const char=getChar();
+  state.pressure=char.initialPressure||35;
+  state.pressure=clamp(state.pressure,5,90);
+  state.scores={};
+  state.subjectIdx=0;
+  state.questionIdx=0;
+  state.totalQuestions=0;
+  state.answeredQuestions=0;
+  state.usedCareIdx=0;
+  state.history=[];
+  state.maxPressureReached=0;
+  state.lastSubjectScores={};
+  state.selectedSubjects=[];
+  state.firstSubject=null;
+  state.secondSubjects=[];
+  state.triggered=false;
+  state.triggerUsed=false;
+  state.careEventTriggered=0;
+  state.nightBonus=0;
+  state.cramming=false;
+  state.consecutiveGoodChoices=0;
+  state.countyParentCareTriggered=false;
+  state.pressureBySubject={};
+  state.consecutiveScienceGood=0;
+  state.consecutiveCompGood=0;
+  state.careSugarSoup=false;
+  state.careParentSoup=false;
+  state.careParentSMS=false;
+  state.careWarmFood=false;
+  state.streakBonusActive=false;
+  state.pressureWasHigh=false;
+  state.pressureRecovered=false;
+  if(!globalStats.charPlayCounts)globalStats.charPlayCounts={};
+  globalStats.charPlayCounts[id]=(globalStats.charPlayCounts[id]||0)+1;
+  saveGlobalStats();
+  renderSubjectSelect();
+};
+
+function renderSubjectSelect(){
+  state.phase='subject_select';
+  showPressureBar(false);
+  showTimer(false);
+  
+  const firstChoiceOptions=[
+    {id:'physics',name:'物理'},
+    {id:'history',name:'历史'}
+  ];
+  const secondChoiceOptions=[
+    {id:'biology',name:'生物'},
+    {id:'geography',name:'地理'},
+    {id:'chemistry',name:'化学'},
+    {id:'politics',name:'政治'}
+  ];
+  
+  let firstChoiceHtml=firstChoiceOptions.map(opt=>
+    `<div class="subject-option" data-subject="${opt.id}" onclick="selectFirstSubject('${opt.id}')">${opt.name}</div>`
+  ).join('');
+  
+  let secondChoiceHtml=secondChoiceOptions.map(opt=>
+    `<div class="subject-option" data-subject="${opt.id}" onclick="selectSecondSubject('${opt.id}')">${opt.name}</div>`
+  ).join('');
+  
+  render(`
+    <div class="card">
+      <h2>📚 选择考试科目</h2>
+      <p style="font-size:.88em;color:var(--text-dim);margin-bottom:16px;text-align:center">请根据你的擅长和兴趣选择科目</p>
+      
+      <div class="subject-select">
+        <div class="subject-select-group">
+          <div class="subject-select-group-title">第一选择：物理 / 历史（二选一）</div>
+          <div class="subject-select-options" id="firstChoiceOptions">${firstChoiceHtml}</div>
+        </div>
+        
+        <div class="subject-select-group">
+          <div class="subject-select-group-title">第二选择：从以下四科中任选两科</div>
+          <div class="subject-select-options" id="secondChoiceOptions">${secondChoiceHtml}</div>
+          <div class="subject-select-hint" id="secondChoiceHint">已选：0/2</div>
+        </div>
+      </div>
+      
+      <button class="btn btn-primary mt16" id="confirmSubjectBtn" onclick="confirmSubjects()" disabled>确认选科并开始考试</button>
+    </div>`);
+}
+
+window.selectFirstSubject=function(subjectId){
+  state.firstSubject=subjectId;
+  const options=document.querySelectorAll('#firstChoiceOptions .subject-option');
+  options.forEach(opt=>{
+    opt.classList.toggle('selected',opt.dataset.subject===subjectId);
+  });
+  checkSubjectSelectionComplete();
+};
+
+window.selectSecondSubject=function(subjectId){
+  if(!state.secondSubjects)state.secondSubjects=[];
+  
+  const idx=state.secondSubjects.indexOf(subjectId);
+  if(idx>-1){
+    state.secondSubjects.splice(idx,1);
+  }else{
+    if(state.secondSubjects.length>=2){
+      state.secondSubjects.shift();
+    }
+    state.secondSubjects.push(subjectId);
+  }
+  
+  const options=document.querySelectorAll('#secondChoiceOptions .subject-option');
+  options.forEach(opt=>{
+    const isSelected=state.secondSubjects.includes(opt.dataset.subject);
+    opt.classList.toggle('selected',isSelected);
+    
+    if(state.secondSubjects.length>=2&&!isSelected){
+      opt.classList.add('disabled');
+    }else{
+      opt.classList.remove('disabled');
+    }
+  });
+  
+  const hint=document.getElementById('secondChoiceHint');
+  if(hint){
+    hint.textContent=`已选：${state.secondSubjects.length}/2`;
+  }
+  
+  checkSubjectSelectionComplete();
+};
+
+let _subjectAutoTimer=null;
+function checkSubjectSelectionComplete(){
+  const btn=document.getElementById('confirmSubjectBtn');
+  if(btn){
+    const firstSelected=!!state.firstSubject;
+    const secondSelected=state.secondSubjects&&state.secondSubjects.length===2;
+    btn.disabled=!(firstSelected&&secondSelected);
+    if(firstSelected&&secondSelected){
+      btn.textContent='开始考试';
+      if(_subjectAutoTimer)clearTimeout(_subjectAutoTimer);
+      _subjectAutoTimer=setTimeout(()=>{_subjectAutoTimer=null;if(!btn.disabled&&document.getElementById('confirmSubjectBtn'))confirmSubjects()},600);
+    }
+  }
+}
+
+window.confirmSubjects=function(){
+  if(!state.firstSubject||!state.secondSubjects||state.secondSubjects.length!==2)return;
+  if(state.selectedSubjects&&state.selectedSubjects.length>=6)return;
+  if(_subjectAutoTimer){clearTimeout(_subjectAutoTimer);_subjectAutoTimer=null;}
+  
+  state.selectedSubjects=['chinese','math','english',state.firstSubject,...state.secondSubjects];
+  
+  renderNight();
+};
+
+function renderNight(){
+  state.phase='night';
+  showPressureBar(false);
+  showTimer(false);
+  showProgressText(false);
+  const txt=rand(NIGHT_TEXTS);
+  
+  const char=getChar();
+  const ip=char.initialPressure||35;
+  const pressureDesc=ip>=45?'你翻来覆去睡不着，手心微微出汗，脑子里全是明天的考试':ip>=35?'你深吸一口气，告诉自己要稳住':'你感觉还算放松，呼吸平稳，心里踏实';
+  
+  render(`
+    <div class="card">
+      <h2>📖 考前一晚</h2>
+      <p style="text-align:left;line-height:2;margin:20px 0;font-size:.93em;color:var(--text)">${txt}</p>
+      <p style="text-align:left;line-height:1.8;margin:16px 0;font-size:.88em;color:var(--text-dim);font-style:italic">${pressureDesc}……</p>
+      
+      <div class="question-area" style="margin-top:20px">
+        <div class="question-text" style="text-align:center;font-weight:600;margin-bottom:16px">距离明天开考还有几个小时，你决定……</div>
+        <div class="options-list">
+          <button class="btn btn-option" onclick="chooseCramming(true)">📚 临时抱佛脚，再复习重点内容</button>
+          <button class="btn btn-option" onclick="chooseCramming(false)">😴 不看了，早点休息养精蓄锐</button>
+        </div>
+      </div>
+    </div>`);
+}
+
+window.chooseCramming=function(cram){
+  if(state.crammingChosen)return;
+  state.crammingChosen=true;
+  state.cramming=cram;
+  
+  const allBtns=document.querySelectorAll('.btn-option');
+  allBtns.forEach(b=>{b.disabled=true;b.onclick=null;});
+  
+  if(cram){
+    state.pressure=clamp(state.pressure+6,0,100);
+    updatePressureUI(6);
+  }
+  
+  const narrText=cram?'你又翻开了笔记，把重点内容快速过了一遍。虽然有些疲惫，但心里踏实了一些。':'你合上书本，闭上眼睛。该复习的都复习了，现在最重要的是休息好。';
+  
+  const narr=document.createElement('div');
+  narr.className='narrative';
+  narr.textContent=narrText;
+  const card=document.querySelector('.card');
+  
+  const optsList=card.querySelector('.options-list');
+  if(optsList)optsList.style.display='none';
+  const qText=card.querySelector('.question-text');
+  if(qText)qText.style.display='none';
+  
+  if(card)card.appendChild(narr);
+  
+  setTimeout(()=>{
+    const nextBtn=document.createElement('button');
+    nextBtn.className='btn btn-primary mt16';
+    nextBtn.textContent='走进考场';
+    nextBtn.style.animation='fadeIn .4s ease';
+    nextBtn.onclick=()=>startExam();
+    if(card)card.appendChild(nextBtn);
+  },400);
+}
+
+function startExam(){
+  state.subjectIdx=0;
+  state.questionIdx=0;
+  showPressureBar(true);
+  showProgressText(true);
+  updateProgressText();
+  updatePressureUI();
+  renderSubjectIntro();
+}
+
+function renderSubjectIntro(){
+  state.phase='subject_intro';
+  const subjectId=state.selectedSubjects[state.subjectIdx];
+  const subj=SUBJECTS.find(s=>s.id===subjectId);
+  if(!subj){
+    renderEnding();
+    return;
+  }
+  const char=getChar();
+  let subjectPressure=8;
+  if(char.hidden.pressureResist>=70){
+    subjectPressure=5;
+  }else if(char.hidden.timeSensitivity>=75){
+    subjectPressure=12;
+  }
+  state.pressure=clamp(state.pressure+subjectPressure,0,100);
+  updatePressureUI(subjectPressure);
+  updateBrightness();
+  const charText=SUBJECT_INTROS[subj.id]?.[state.charId]||SUBJECT_INTROS[subj.id]?.normal||'';
+  render(`
+    <div class="card" style="text-align:center">
+      <div class="subject-name" style="font-size:1.3em;margin-bottom:16px">${subj.name}</div>
+      <p style="font-size:.92em;color:var(--text-dim);line-height:1.8;margin:16px 0">${charText}</p>
+      <button class="btn btn-primary" onclick="startSubject()">开始答题</button>
+    </div>`);
+  updateProgressDots();
+}
+
+function updateProgressDots(){
+  const total=state.selectedSubjects.length;
+  const done=state.subjectIdx;
+  let dots='';
+  for(let i=0;i<total;i++){
+    const cls=i<state.subjectIdx?'dot done':i===state.subjectIdx?'dot current':'dot';
+    dots+=`<div class="${cls}"></div>`;
+  }
+  const wrap=app.querySelector('.progress-dots');
+  if(wrap)wrap.innerHTML=dots;
+}
+
+function startSubject(){
+  state.phase='question';
+  renderQuestion();
+}
+
+function renderQuestion(){
+  const subjectId=state.selectedSubjects[state.subjectIdx];
+  const subj=SUBJECTS.find(s=>s.id===subjectId);
+  const charQuestions=QUESTIONS[subj.id];
+  if(!charQuestions){
+    renderSubjectDone();
+    return;
+  }
+  const q=charQuestions[state.charId]||charQuestions.normal;
+  state.totalQuestions++;
+  
+  const shuffledOpts=[...q.opts];
+  for(let i=shuffledOpts.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [shuffledOpts[i],shuffledOpts[j]]=[shuffledOpts[j],shuffledOpts[i]];
+  }
+  state.currentShuffledOpts=shuffledOpts;
+  
+  const optsHtml=shuffledOpts.map((o,i)=>{
+    const labels=['A','B','C','D','E','F'];
+    const label=labels[i]||String(i+1);
+    const textWithoutLabel=o.text.replace(/^[A-F]\.\s*/, '');
+    return `<button class="btn btn-option" data-idx="${i}" onclick="answerQuestion(${i})">${label}. ${textWithoutLabel}</button>`;
+  }).join('');
+
+  render(`
+    <div class="card">
+      <div class="progress-dots">${state.selectedSubjects.map((_,i)=>`<div class="${i<state.subjectIdx?'dot done':i===state.subjectIdx?'dot current':'dot'}"></div>`).join('')}</div>
+      <div class="question-area">
+        <span class="question-subject-tag">${subj.name}</span>
+        <div class="question-text">${q.q}</div>
+        <div class="options-list" id="optsList">${optsHtml}</div>
+      </div>
+    </div>`);
+
+  startTimer(subj.time,()=>answerQuestion(-1));
+}
+
+window.answerQuestion=function(idx){
+  stopTimer();
+  const subjectId=state.selectedSubjects[state.subjectIdx];
+  const subj=SUBJECTS.find(s=>s.id===subjectId);
+  const charQuestions=QUESTIONS[subj.id];
+  const q=charQuestions[state.charId]||charQuestions.normal;
+  const opts=state.currentShuffledOpts||q.opts;
+  let score;
+  if(idx===-1){
+    score=10;
+  }else{
+    score=opts[idx].score;
+  }
+  
+  const bestIdx=opts.reduce((bi,o,j)=>o.score>opts[bi].score?j:bi,0);
+  const sortedScores=[...opts.map(o=>o.score)].sort((a,b)=>b-a);
+  const bestScore=sortedScores[0];
+  const midScore=sortedScores[Math.floor(sortedScores.length/2)];
+  
+  let pressureChange=0;
+  if(idx===-1){
+    pressureChange=10;
+  }else if(idx===bestIdx){
+    pressureChange=state.pressure>=70?-3:-6;
+  }else if(opts[idx].score>=midScore){
+    pressureChange=2;
+  }else{
+    pressureChange=8;
+  }
+  state.pressure=clamp(state.pressure+pressureChange,0,100);
+  updatePressureUI(pressureChange);
+  
+  const buttons=app.querySelectorAll('.btn-option');
+  
+  if(idx===bestIdx){
+    state.consecutiveGoodChoices++;
+    if(state.consecutiveGoodChoices>=2){
+      state.streakBonusActive=true;
+      const selBtn=buttons[idx];
+      if(selBtn){selBtn.classList.add('streak-flash');setTimeout(()=>selBtn.classList.remove('streak-flash'),900);}
+    }
+    if(['math','physics'].includes(subjectId)){
+      state.consecutiveScienceGood++;
+    }
+    if(['physics','chemistry','biology'].includes(subjectId)){
+      state.consecutiveCompGood++;
+    }
+  }else{
+    state.consecutiveGoodChoices=0;
+    if(['math','physics'].includes(subjectId)){
+      state.consecutiveScienceGood=0;
+    }
+    if(['physics','chemistry','biology'].includes(subjectId)){
+      state.consecutiveCompGood=0;
+    }
+  }
+  
+  score=calculateSubjectScore(subj.id,score);
+  state.lastSubjectScores[subj.id]=score;
+
+  if(!state.scores[subj.id])state.scores[subj.id]=[];
+  state.scores[subj.id].push(score);
+  state.answeredQuestions++;
+  
+  checkHiddenTrigger();
+  
+  buttons.forEach((b,i)=>{
+    b.disabled=true;
+    b.onclick=null;
+    if(i===idx){
+      setTimeout(()=>b.classList.add('selected'),150);
+    }
+    if(i===bestIdx){
+      setTimeout(()=>b.classList.add('correct-reveal'),400);
+    }else if(i===idx&&idx!==bestIdx){
+      setTimeout(()=>b.classList.add('wrong-reveal'),400);
+    }
+  });
+
+  const narrative=generateNarrative(subj,q,idx,score);
+  setTimeout(()=>{
+    const narr=document.createElement('div');
+    narr.className='narrative';
+    narr.textContent=narrative;
+    const card=app.querySelector('.card');
+    if(card){card.appendChild(narr)}
+    const nextBtn=document.createElement('button');
+    nextBtn.className='btn btn-primary mt16';
+    nextBtn.textContent='继续';
+    nextBtn.style.animation='fadeIn .4s ease';
+    nextBtn.onclick=()=>{
+      renderSubjectDone();
+    };
+    if(card)card.appendChild(nextBtn);
+    buttons.forEach(b=>{b.style.transition='opacity .3s ease';b.style.opacity='.5'});
+    const qText=app.querySelector('.question-text');
+    if(qText){qText.style.transition='opacity .3s ease';qText.style.opacity='.6'}
+    const tag=app.querySelector('.question-subject-tag');
+    if(tag){tag.style.transition='opacity .3s ease';tag.style.opacity='.4'}
+  },800);
+};
+
+const NARRATIVE_TEMPLATES={
+chinese:[
+{calm:['你一笔一划地写着作文，思路渐渐清晰起来。窗外的阳光照在试卷上，你感觉自己写得还不错。','你奋笔疾书，文字像流水一样涌出来。虽然不算完美，但至少你把心里的话都写在了纸上。','你决定先做阅读，把作文留到最后。时间分配很重要，你提醒自己不要犯低级错误。','你偷偷套用了背过的范文，改了几个关键词。写完之后你有些心虚，但也顾不了那么多了。'],
+normal:['你写着作文，笔尖在纸上沙沙作响。虽然有些紧张，但你还是坚持写完了。','你认真地写着每一道题，虽然有些题目不太确定，但你尽力了。','你按照平时的习惯做题，时间分配还算合理。','你写完答案，检查了一遍，觉得应该没什么大问题。'],
+struggle:['你看着作文题目，脑子一片空白。过了好一会儿，你才慢慢动笔。','你写得有些吃力，但你知道，每一分都很重要。','你看了看时间，有些着急，但还是强迫自己冷静下来。','你写完了，但心里没底。算了，考完再说吧。']}
+],
+math:[
+{calm:['你稳住了。先做第一问，再尽量写第二问的过程。数学教会你的不只是公式，还有冷静。','你死磕那道导数题，时间一分一秒地过去。等你抬起头，发现只剩五分钟了……','你选择回头检查。重新算了一遍选择题，果然发现了一个计算错误。好险。','你写了个"解"字然后编了一通过程。虽然你自己都不知道写了什么，但看起来挺像那么回事的。'],
+normal:['你认真做着数学题，虽然有些题目不太确定，但你尽力了。','你按照平时的习惯做题，时间分配还算合理。','你写完了答案，检查了一遍，觉得应该没什么大问题。','你做完这道题，深吸一口气，继续做下一题。'],
+struggle:['你看着数学题，脑子一片空白。过了好一会儿，你才慢慢动笔。','你写得有些吃力，但你知道，每一分都很重要。','你看了看时间，有些着急，但还是强迫自己冷静下来。','你写完了，但心里没底。算了，考完再说吧。']}
+],
+english:[
+{calm:['你根据上下文推断出了答案。虽然没听清那句话，但逻辑告诉你应该选这个。','你随便涂了一个。反正听力只有五分一题，不值得纠结。','你回忆了整段对话的大意，选出了最合理的答案。听力嘛，重在理解。','你想着等会儿再回来做，结果最后忘了。那道题就这么空着了。'],
+normal:['你认真做着英语题，虽然有些题目不太确定，但你尽力了。','你按照平时的习惯做题，时间分配还算合理。','你写完了答案，检查了一遍，觉得应该没什么大问题。','你做完这道题，深吸一口气，继续做下一题。'],
+struggle:['你看着英语题，脑子一片空白。过了好一会儿，你才慢慢动笔。','你写得有些吃力，但你知道，每一分都很重要。','你看了看时间，有些着急，但还是强迫自己冷静下来。','你写完了，但心里没底。算了，考完再说吧。']}
+],
+physics:[
+{calm:['你列出方程，一步步推导。物理的魅力就在于此——万物皆有规律可循。','你直接套用了记住的结论。虽然不太确定是否完全适用，但应该没问题。','你用特殊值代入验证，排除了两个明显错误的选项。剩下的，概率50%。','你看了看这道题，又看了看后面的题，果断选择了跳过。时间就是分数。'],
+normal:['你认真做着物理题，虽然有些题目不太确定，但你尽力了。','你按照平时的习惯做题，时间分配还算合理。','你写完了答案，检查了一遍，觉得应该没什么大问题。','你做完这道题，深吸一口气，继续做下一题。'],
+struggle:['你看着物理题，脑子一片空白。过了好一会儿，你才慢慢动笔。','你写得有些吃力，但你知道，每一分都很重要。','你看了看时间，有些着急，但还是强迫自己冷静下来。','你写完了，但心里没底。算了，考完再说吧。']}
+],
+chemistry:[
+{calm:['你画出了元素位置，逐一验证每个选项。推断题虽然费时间，但你有信心全对。','你直接套用了背过的规律。同主族从上到下金属性增强——这个你记得很清楚。','你用排除法先干掉两个明显错误的，剩下的二选一。运气应该会站在你这边的。','你放弃了推断。那些元素符号在你眼里变成了一堆无意义的字母和数字。'],
+normal:['你认真做着化学题，虽然有些题目不太确定，但你尽力了。','你按照平时的习惯做题，时间分配还算合理。','你写完了答案，检查了一遍，觉得应该没什么大问题。','你做完这道题，深吸一口气，继续做下一题。'],
+struggle:['你看着化学题，脑子一片空白。过了好一会儿，你才慢慢动笔。','你写得有些吃力，但你知道，每一分都很重要。','你看了看时间，有些着急，但还是强迫自己冷静下来。','你写完了，但心里没底。算了，考完再说吧。']}
+],
+biology:[
+{calm:['你分别分析了每对性状，然后用乘法原理组合出答案。遗传题的套路，你已经烂熟于心。','你直接写了9:3:3:1。双杂合子自交的经典比例，闭着眼睛都能写出来。','你画了个大大的棋盘格，逐一填写。虽然方法笨了点，但至少不会出错。','你随便写了一个比例。那些DdRr在你眼里变成了一堆乱码。'],
+normal:['你认真做着生物题，虽然有些题目不太确定，但你尽力了。','你按照平时的习惯做题，时间分配还算合理。','你写完了答案，检查了一遍，觉得应该没什么大问题。','你做完这道题，深吸一口气，继续做下一题。'],
+struggle:['你看着生物题，脑子一片空白。过了好一会儿，你才慢慢动笔。','你写得有些吃力，但你知道，每一分都很重要。','你看了看时间，有些着急，但还是强迫自己冷静下来。','你写完了，但心里没底。算了，考完再说吧。']}
+],
+history:[
+{calm:['你仔细地分析材料，提取关键信息，然后条理清晰地写下答案。','你用历史思维分析了事件的因果关系，答案写得很完整。','你回忆着那些历史事件，把它们和材料中的内容对应起来。','你写得很快，但每一句都切中要害。历史对你来说并不困难。'],
+normal:['你认真做着历史题，虽然有些题目不太确定，但你尽力了。','你按照平时的习惯做题，时间分配还算合理。','你写完了答案，检查了一遍，觉得应该没什么大问题。','你做完这道题，深吸一口气，继续做下一题。'],
+struggle:['你看着历史题，脑子一片空白。过了好一会儿，你才慢慢动笔。','你写得有些吃力，但你知道，每一分都很重要。','你看了看时间，有些着急，但还是强迫自己冷静下来。','你写完了，但心里没底。算了，考完再说吧。']}
+],
+geography:[
+{calm:['你仔细分析图表，提取关键信息，然后条理清晰地写下答案。','你用地理思维分析了现象的成因，答案写得很完整。','你回忆着那些地理知识，把它们和图表中的内容对应起来。','你写得很快，但每一句都切中要害。地理对你来说并不困难。'],
+normal:['你认真做着地理题，虽然有些题目不太确定，但你尽力了。','你按照平时的习惯做题，时间分配还算合理。','你写完了答案，检查了一遍，觉得应该没什么大问题。','你做完这道题，深吸一口气，继续做下一题。'],
+struggle:['你看着地理题，脑子一片空白。过了好一会儿，你才慢慢动笔。','你写得有些吃力，但你知道，每一分都很重要。','你看了看时间，有些着急，但还是强迫自己冷静下来。','你写完了，但心里没底。算了，考完再说吧。']}
+],
+politics:[
+{calm:['你仔细分析材料，运用政治理论知识，条理清晰地写下答案。','你用政治思维分析了问题，答案写得很完整。','你回忆着那些政治理论，把它们和材料中的内容对应起来。','你写得很快，但每一句都切中要害。政治对你来说并不困难。'],
+normal:['你认真做着政治题，虽然有些题目不太确定，但你尽力了。','你按照平时的习惯做题，时间分配还算合理。','你写完了答案，检查了一遍，觉得应该没什么大问题。','你做完这道题，深吸一口气，继续做下一题。'],
+struggle:['你看着政治题，脑子一片空白。过了好一会儿，你才慢慢动笔。','你写得有些吃力，但你知道，每一分都很重要。','你看了看时间，有些着急，但还是强迫自己冷静下来。','你写完了，但心里没底。算了，考完再说吧。']}
+]
+};
+
+const CHAR_PERSONALITY={
+normal:{calm:'从容',struggle:'坚持'},
+repeat:{calm:'沉稳',struggle:'经验'},
+art:{calm:'放松',struggle:'随性'},
+science:{calm:'自信',struggle:'理性'},
+biased:{calm:'极端',struggle:'偏科'},
+nervous:{calm:'紧张',struggle:'压力'},
+county:{calm:'坚韧',struggle:'努力'},
+competition:{calm:'竞赛',struggle:'逻辑'},
+leftbehind:{calm:'独立',struggle:'坚强'},
+familyCrisis:{calm:'早熟',struggle:'承受'},
+preadmit:{calm:'不甘',struggle:'证明'},
+slackoff:{calm:'觉醒',struggle:'珍惜'}
+};
+
+function generateNarrative(subj,q,optIdx,score){
+  const c=state.charId;
+  const charPersonality=CHAR_PERSONALITY[c]||{calm:'从容',struggle:'坚持'};
+  let tone='normal';
+  if(score>=85){
+    tone='calm';
+  }else if(score<60||state.pressure>70){
+    tone='struggle';
+  }
+  const templates=NARRATIVE_TEMPLATES[subj.id];
+  if(!templates||!templates[0]){
+    return '你写完了答案，放下笔，深吸了一口气。';
+  }
+  const toneTemplates=templates[0][tone]||templates[0].normal;
+  const idx=optIdx===-1?q.opts.length-1:optIdx;
+  let narrative=toneTemplates[idx]||'你写完了答案，放下笔，深吸了一口气。';
+  if(c==='repeat'&&tone==='struggle'){
+    narrative=narrative.replace('你','去年的你也是这样，但今年的你');
+  }else if(c==='science'&&tone==='calm'){
+    narrative=narrative.replace('你','作为理科大神的你');
+  }else if(c==='nervous'&&tone==='struggle'){
+    narrative=narrative.replace('你','紧张的你');
+  }else if(c==='county'&&tone==='struggle'){
+    narrative=narrative.replace('你','来自县城的你');
+  }else if(c==='leftbehind'&&tone==='calm'){
+    narrative=narrative.replace('你','独立的你');
+  }
+  
+  if(state.consecutiveGoodChoices>=3&&tone==='calm'){
+    narrative+='（渐入佳境，越写越稳了。）';
+  }else if(state.consecutiveGoodChoices>=2&&tone==='calm'){
+    narrative+='（感觉顺了一点，继续稳住。）';
+  }else if(state.consecutiveGoodChoices>=3&&tone==='struggle'){
+    narrative+='（虽然状态不好，但你已经渐稳了。）';
+  }else if(state.consecutiveGoodChoices>=2&&tone==='struggle'){
+    narrative+='（虽然状态不好，但感觉比之前顺了一点。）';
+  }
+  
+  if(state.pressure>70){
+    const bodyDetailsCalm=['你深吸一口气，压下狂跳的心','额头上有细密的汗珠，但你的手很稳','疲惫感袭来，但你咬紧牙关'];
+    const bodyDetailsStruggle=['你的手心微微出汗','你感觉呼吸有些急促','你的手有些发抖','你深吸一口气，试图让自己冷静下来'];
+    const details=tone==='calm'?bodyDetailsCalm:bodyDetailsStruggle;
+    const detail=details[Math.floor(Math.random()*details.length)];
+    narrative+=`（${detail}）`;
+  }
+  
+  if(state.triggered&&state.triggerUsed){
+    const triggerHints={
+      repeat:'（去年的遗憾，今年终于补上了。）',
+      art:'（集训教会你的不只是画画，还有坚持。）',
+      science:'（竞赛生的直觉，让你对答案深信不疑。）',
+      biased:'（偏科又怎样？你用自己的方式证明了实力。）',
+      nervous:'（手还在抖，但你已经不再害怕了。）',
+      county:'（县城出来的你，比任何人都珍惜这次机会。）',
+      competition:'（竞赛训练出的思维，在考场上一览无余。）',
+      leftbehind:'（一个人的日子，让你比谁都坚强。）',
+      familyCrisis:'（那些独自承受的夜晚，化作了笔下的力量。）',
+      preadmit:'（没能保送的遗憾，此刻都变成了动力。）',
+      slackoff:'（从摆烂到认真，你证明了自己可以改变。）',
+      normal:'（那口热汤的温暖，一直陪着你。）'
+    };
+    narrative+=triggerHints[c]||'';
+  }
+  
+  if(state.pressureRecovered){
+    narrative+='（感觉缓过来了，呼吸也平稳了许多。）';
+    state.pressureRecovered=false;
+  }
+  
+  if(state.cramming&&state.subjectIdx===0){
+    narrative+='（昨晚临时看的重点有些混在一起，有点慌，但还行。）';
+  }
+  
+  if(optIdx===-1){
+    const timeoutReactions={
+      nervous:'（时间到了，你脑子一片空白，手还在抖。）',
+      county:'（时间到了，你咬紧牙——县城出来的你，不甘心。)',
+      repeat:'（时间到了，去年也是这样……但今年你至少写完了。）',
+      science:'（时间到了，最后几步没来得及验证，有些遗憾。）',
+      art:'（时间到了，你放下笔，心想集训时也没少赶工。）',
+      leftbehind:'（时间到了，你一个人默默放下笔，已经习惯了。)',
+      slackoff:'（时间到了，你心想曾经摆烂的自己可能连这都写不完。）',
+      familyCrisis:'（时间到了，你深吸一口气，压下所有情绪。）',
+      biased:'（时间到了，强项的部分应该没问题，弱项……随缘吧。）',
+      competition:'（时间到了，竞赛训练的速度还是不够用。）',
+      preadmit:'（时间到了，没能保送的你，连时间都不够用。）'
+    };
+    narrative+=timeoutReactions[state.charId]||'（时间到了，你放下笔，叹了口气。）';
+  }
+  
+  return narrative;
+}
+
+function renderSubjectDone(){
+  state.phase='subject_done';
+  const subjectId=state.selectedSubjects[state.subjectIdx];
+  const subj=SUBJECTS.find(s=>s.id===subjectId);
+  const text='你走出了考场，深吸一口气。'+(state.subjectIdx>=state.selectedSubjects.length-1?'终于考完了！':'准备下一科吧。');
+  const isLastSubject=state.subjectIdx>=state.selectedSubjects.length-1;
+  render(`
+    <div class="card">
+      <h3 style="text-align:center;margin-bottom:16px">${subj.name} · 考试结束</h3>
+      <div class="narrative" style="margin:0 0 20px">${text}</div>
+      <button class="btn btn-primary" onclick="afterSubject()">${isLastSubject?'查看成绩':'继续'}</button>
+    </div>`);
+}
+
+window.afterSubject=function(){
+  state.subjectIdx++;
+
+  if(state.subjectIdx>=state.selectedSubjects.length){
+    renderEnding();
+    return;
+  }
+
+  const afterSubjIdx=state.subjectIdx;
+  const highPressureThreshold=70;
+  const careCheckpoints=[2,4];
+  
+  if(state.pressure>=highPressureThreshold&&state.careEventTriggered===0){
+    renderCareMoment(()=>{
+      checkRandomEventOrContinue();
+    });
+    return;
+  }
+  
+  if(careCheckpoints.includes(afterSubjIdx)){
+    renderCareMoment(()=>{
+      checkRandomEventOrContinue();
+    });
+    return;
+  }
+  
+  if(state.pressure>=highPressureThreshold&&afterSubjIdx!==1&&afterSubjIdx!==5){
+    renderCareMoment(()=>{
+      checkRandomEventOrContinue();
+    });
+    return;
+  }
+  
+  checkRandomEventOrContinue();
+};
+
+function checkRandomEventOrContinue(){
+  if(Math.random()<0.7){
+    renderRandomEvent(()=>{
+      renderSubjectIntro();
+    });
+  }else{
+    renderSubjectIntro();
+  }
+}
+
+const CHARACTER_EVENTS={
+repeat:[
+  {text:'突然想起去年同一道题，你当时也没有做出来……',effect:8,icon:'💭'},
+  {text:'你告诉自己，今年和去年不一样了。',effect:-6,icon:'💪'}
+],
+art:[
+  {text:'脑中闪过集训时画画的画面，你有些走神了……',effect:5,icon:'🎨'},
+  {text:'想起集训时老师说的"坚持就是胜利"，你振作起来。',effect:-8,icon:'✨'}
+],
+county:[
+  {text:'想起县城中学的老师借给你的参考书，你更有动力了。',effect:-7,icon:'📚'},
+  {text:'你想起那些在昏暗灯光下学习的日子，心里有些酸楚。',effect:6,icon:'💔'}
+],
+leftbehind:[
+  {text:'手机震动了一下，是父母发来的一条迟到的短信："加油，孩子。"',effect:-10,icon:'📱'},
+  {text:'你想起小时候等父母回家的夜晚，有些分心了。',effect:7,icon:'🌙'}
+],
+nervous:[
+  {text:'你突然想起去年模拟考时紧张得手心出汗的场景……',effect:10,icon:'😰'},
+  {text:'你深呼吸几次，告诉自己这次不一样。',effect:-5,icon:'🧘'}
+],
+science:[
+  {text:'你想起竞赛教练说的"这些题目都是小儿科"，信心倍增。',effect:-8,icon:'🏆'},
+  {text:'你觉得这题太简单了，有些掉以轻心。',effect:4,icon:'😏'}
+],
+familyCrisis:[
+  {text:'你想起那些独自承受的夜晚，心里有些沉重。',effect:6,icon:'🌧️'},
+  {text:'你告诉自己，高考是改变命运的机会，要抓住。',effect:-9,icon:'🔥'}
+],
+preadmit:[
+  {text:'你想起那些未能保送的同学，有些庆幸又有些不甘。',effect:3,icon:'🎭'},
+  {text:'你告诉自己，要用高考证明自己的选择是对的。',effect:-6,icon:'✊'}
+],
+slackoff:[
+  {text:'你想起那些摆烂的日子，有些后悔。',effect:5,icon:'😔'},
+  {text:'你告诉自己，现在开始还不晚。',effect:-7,icon:'🌅'}
+]
+};
+
+function renderRandomEvent(callback){
+  state.phase='event';
+  const charEvents=CHARACTER_EVENTS[state.charId];
+  const useCharEvent=charEvents&&Math.random()<0.4;
+  
+  let evt,isCharEvent=false;
+  if(useCharEvent){
+    evt=rand(charEvents);
+    isCharEvent=true;
+  }else{
+    const goodThreshold=state.pressure<40?0.7:state.pressure<70?0.5:0.3;
+    const isGood=Math.random()<goodThreshold;
+    const pool=isGood?RANDOM_EVENTS.good:RANDOM_EVENTS.bad;
+    evt=rand(pool);
+  }
+  
+  const charMods=getChar().mods;
+  let effect=evt.effect;
+  effect=Math.round(effect*(1-charMods.eventLuck/100));
+  
+  const charModifiers=evt.charModifiers||{};
+  const modifier=charModifiers[state.charId]||1.0;
+  effect=Math.round(effect*modifier);
+  if(effect>0&&state.selectedSubjects.includes('physics')&&(evt.text.includes('物理')||evt.text.includes('公式')||evt.text.includes('计算'))){
+    effect=Math.max(1,Math.round(effect*0.8));
+  }
+
+  state.pressure=clamp(state.pressure+effect,0,100);
+  updatePressureUI(effect);
+  updateProgressText();
+
+  let resolved=false;
+  const go=()=>{if(resolved)return;resolved=true;stopTimer();callback()};
+
+  const cls=effect>0?'bad':'good';
+  let displayText=evt.text;
+  
+  if(state.pressure>70){
+    const bodyDetails=['你的手心微微出汗','你感觉呼吸有些急促','你的手有些发抖','你深吸一口气，试图让自己冷静下来'];
+    const detail=bodyDetails[Math.floor(Math.random()*bodyDetails.length)];
+    displayText=`${displayText}（${detail}）`;
+  }
+  
+  if(modifier>1.2&&state.charId==='repeat'&&evt.effect>0){
+    displayText=displayText.replace('。','，去年也遇到过类似的情况。');
+  }else if(modifier>1.2&&state.charId==='nervous'){
+    displayText=displayText.replace('。','，你感觉心跳加速了。');
+  }else if(state.charId==='repeat'&&evt.effect>0){
+    displayText=displayText.replace('。','，这感觉去年也经历过。');
+  }else if(state.charId==='nervous'&&evt.effect>0){
+    displayText=displayText.replace('。','，你的手微微发抖。');
+  }else if(state.charId==='county'&&evt.effect>0){
+    displayText=displayText.replace('。','，想起县城中学那些艰苦的日子。');
+  }else if(state.charId==='leftbehind'&&evt.effect>0){
+    displayText=displayText.replace('。','，要是父母在身边就好了。');
+  }else if(state.charId==='familyCrisis'&&evt.effect>0){
+    displayText=displayText.replace('。','，你深吸一口气，压下那些沉重的情绪。');
+  }else if(state.charId==='slackoff'&&evt.effect>0){
+    displayText=displayText.replace('。','，你有些后悔曾经摆烂的日子。');
+  }else if(state.charId==='science'&&evt.effect<0){
+    displayText=displayText.replace('。','，这对理科生来说不算什么。');
+  }else if(state.charId==='repeat'&&evt.effect<0){
+    displayText=displayText.replace('。','，比去年高考时的心态好多了。');
+  }else if(state.charId==='nervous'&&evt.effect<0){
+    displayText=displayText.replace('。','，你终于感觉放松了一些。');
+  }else if(state.charId==='county'&&evt.effect<0){
+    displayText=displayText.replace('。','，你告诉自己要珍惜这份幸运。');
+  }else if(state.charId==='leftbehind'&&evt.effect<0){
+    displayText=displayText.replace('。','，你想起了远方父母的期盼。');
+  }else if(state.charId==='familyCrisis'&&evt.effect<0){
+    displayText=displayText.replace('。','，这一刻的平静让你格外珍惜。');
+  }else if(state.charId==='slackoff'&&evt.effect<0){
+    displayText=displayText.replace('。','，你觉得自己今天的状态不错。');
+  }
+
+  render(`
+    <div class="card">
+      <div class="event-card ${cls}">
+        <div class="event-icon">${evt.icon}</div>
+        <div class="event-text">${displayText}</div>
+        <p style="margin-top:12px;font-size:.82em;color:${effect>0?'var(--bad)':'var(--good)'}">
+          压力${effect>0?'+':''}${effect}%
+        </p>
+      </div>
+      <button class="btn btn-primary mt16" onclick="window._eventGo()">继续考试</button>
+    </div>`);
+
+  window._eventGo=go;
+  startTimer(10,go);
+}
+
+function renderCareMoment(callback){
+  state.phase='care';
+  updateBrightness(true);
+  const care=care_moment_at(state.usedCareIdx);
+  state.usedCareIdx++;
+   state.careEventTriggered++;
+  
+  const parentCareTexts=['妈妈在校门口等你','爸爸远远地站在树荫下等你','父母说的那句','同学从旁边考场跑过来'];
+  const isParentCare=parentCareTexts.some(t=>care.text.includes(t));
+  if(state.charId==='county'&&isParentCare){
+    state.countyParentCareTriggered=true;
+  }
+  
+  if(care.text.includes('糖')||care.text.includes('鸡汤')){
+    state.careSugarSoup=true;
+  }
+  if(isParentCare||care.text.includes('鸡汤')){
+    state.careParentSoup=true;
+  }
+  if(care.text.includes('父母说的那句')||care.text.includes('尽力就好')){
+    state.careParentSMS=true;
+  }
+  if(care.text.includes('鸡汤')||care.text.includes('巧克力')||care.text.includes('热热的汤')){
+    state.careWarmFood=true;
+  }
+  
+  let effect=care.effect;
+  const charModifiers=care.charModifiers||{};
+  const modifier=charModifiers[state.charId]||1.0;
+  effect=Math.round(effect*modifier);
+  if(effect<0&&state.selectedSubjects.includes('history')&&(care.text.includes('历史')||care.text.includes('过去')||care.text.includes('故事'))){
+    effect=Math.round(effect*1.2);
+  }
+  
+  state.pressure=clamp(state.pressure+effect,0,100);
+  updatePressureUI(effect);
+  updateProgressText();
+
+  let displayText=care.text;
+  if(state.charId==='county'){
+    displayText=displayText.replace('你的心里暖暖的','你想起了家里饭菜的味道，眼眶有些发热');
+  }else if(state.charId==='leftbehind'){
+    displayText=displayText.replace('你的心里暖暖的','你知道远方有人在惦记着你，这就够了');
+  }else if(modifier<0.8&&state.charId==='familyCrisis'){
+    displayText=displayText.replace('你的心里暖暖的','你深吸一口气，把情绪压在心底');
+  }else if(state.charId==='nervous'&&modifier<1.0){
+    displayText=displayText.replace('你的心里暖暖的','你告诉自己还能撑一下，紧绷的神经松弛了些');
+  }else if(state.charId==='nervous'){
+    displayText=displayText.replace('你的心里暖暖的','你深吸一口气，感觉自己还能撑住');
+  }else if(state.charId==='repeat'){
+    displayText=displayText.replace('你的心里暖暖的','这感觉比去年的这个时候好多了');
+  }else if(state.charId==='science'){
+    displayText=displayText.replace('你的心里暖暖的','你觉得自己又充满了能量');
+  }else if(state.charId==='slackoff'){
+    displayText=displayText.replace('你的心里暖暖的','你有些感动，觉得自己不该再摆烂');
+  }else if(state.charId==='art'){
+    displayText=displayText.replace('你的心里暖暖的','你想把这份温暖画下来');
+  }else if(state.charId==='competition'){
+    displayText=displayText.replace('你的心里暖暖的','你觉得自己又有了冲刺的力气');
+  }else if(state.charId==='preadmit'){
+    displayText=displayText.replace('你的心里暖暖的','你更加坚定要用高考证明自己');
+  }else if(state.charId==='biased'){
+    displayText=displayText.replace('你的心里暖暖的','你觉得自己也不是那么差');
+  }
+
+  render(`
+    <div class="card">
+      <div class="care-card">
+        <div class="care-icon">${care.icon}</div>
+        <div class="care-text">${displayText}</div>
+        <p style="margin-top:12px;font-size:.82em;color:var(--care)">压力 ${effect>0?'+':''}${effect}%</p>
+      </div>
+      <button class="btn btn-primary mt16" id="careContinue">继续考试</button>
+    </div>`);
+  $('careContinue').onclick=callback;
+}
+
+function care_moment_at(idx){
+  return CARE_MOMENTS[idx%CARE_MOMENTS.length];
+}
+
+function renderEnding(){
+  state.phase='ending';
+  showTimer(false);
+  showPressureBar(false);
+  showProgressText(false);
+
+  const subjNames=state.selectedSubjects;
+  const subjMaxes={chinese:150,math:150,english:150,physics:100,history:100,chemistry:100,biology:100,geography:100,politics:100};
+  const subjScores={};
+  let total=0;
+
+  state.selectedSubjects.forEach(subjectId=>{
+    const scores=state.scores[subjectId]||[];
+    const avg=scores.length?scores.reduce((a,b)=>a+b,0)/scores.length:0;
+    const max=subjMaxes[subjectId]||150;
+    const final=Math.round(avg/100*max);
+    subjScores[subjectId]=final;
+    total+=final;
+  });
+
+  if(state.charId==='biased'&&state.triggered&&state.triggerUsed){
+    let maxSubj=null,maxScore=-1;
+    Object.keys(subjScores).forEach(sid=>{
+      if(subjScores[sid]>maxScore){maxScore=subjScores[sid];maxSubj=sid;}
+    });
+    if(maxSubj){
+      const subjMax=subjMaxes[maxSubj]||150;
+      subjScores[maxSubj]=Math.min(maxScore+25,subjMax);
+      total=subjScores[maxSubj]-maxScore+total;
+    }
+  }
+
+  const charMods=getChar().mods;
+  total=clamp(total+charMods.scoreBonus,0,750);
+  
+  const triggerBonus=applyTriggerBonus();
+  total=clamp(total+triggerBonus,0,750);
+
+  const maxPressure=state.maxPressureReached;
+  const charId=state.charId;
+  const char=getChar();
+  
+  let tier,tierColor,summary;
+  
+  if(total>=650){
+    tier='顶尖水平 · 清北有望';
+    tierColor='var(--accent)';
+    if(maxPressure>=75){
+      summary='你赢了，但很累。那些高压下的坚持，那些深夜里的挣扎，只有你自己知道。现在，终于可以喘口气了。';
+    }else if(maxPressure<=50){
+      summary='你撑过来了，而且心态很稳。那些日日夜夜的努力，终于在这个夏天结出了最甜的果实。';
+    }else{
+      summary='你撑过来了。那些日日夜夜的努力，终于在这个夏天结出了最甜的果实。无论最终去向哪里，你都已经证明了自己。';
+    }
+  }else if(total>=600){
+    tier='优秀水平 · 985/211院校';
+    tierColor='var(--good)';
+    if(maxPressure>=75){
+      summary='高分背后是高压。你扛住了，这本身就是一种能力。好好休息，大学会是新的开始。';
+    }else if(maxPressure<=50){
+      summary='你稳住了，发挥得很出色。三年的汗水没有白流，你值得这个好成绩。';
+    }else{
+      summary='正常发挥，稳中有进。三年的汗水没有白流，你值得这个好成绩。';
+    }
+  }else if(total>=550){
+    tier='良好水平 · 211院校';
+    tierColor='#60a5fa';
+    if(maxPressure>=75){
+      summary='压力很大，但你没有放弃。这个成绩，是你咬牙坚持换来的。';
+    }else if(maxPressure<=50){
+      summary='你稳住了，虽然有些遗憾，但够用。人生的路很长，高考只是其中一站。';
+    }else{
+      summary='不错的成绩。虽然可能不是你最理想的结果，但有遗憾但够用。';
+    }
+  }else if(total>=500){
+    tier='中等水平 · 一本线附近';
+    tierColor='var(--accent2)';
+    if(maxPressure>=75){
+      summary='这一路走来很不容易。无论结果如何，你都没有放弃自己。';
+    }else if(maxPressure<=50){
+      summary='你考出了自己的水平。也许有些遗憾，也许有些不甘，但这就是青春的样子。';
+    }else{
+      summary='你考出了自己的水平。也许有些遗憾，也许有些不甘，但这就是青春的样子。';
+    }
+  }else{
+    tier='这只是模拟';
+    tierColor='var(--text-dim)';
+    if(charId==='nervous'){
+      summary='紧张让你发挥失常，但这只是一次模拟。真正的你，比这个分数要好得多。';
+    }else if(charId==='slackoff'){
+      summary='摆烂的代价，你现在看到了。但记住，一切都还来得及。';
+    }else if(maxPressure>=75){
+      summary='压力太大了，这次没能扛住。但请记住，这只是模拟，不是人生的定局。';
+    }else{
+      summary='这只是一次模拟，不要太在意。一张试卷定义不了你的人生。无论结果如何，你都是独一无二的存在。';
+    }
+  }
+
+  if(charId==='nervous'&&total>=550){
+    summary='你扛住了紧张。每一道题都是和恐惧的搏斗，而你赢了。这比任何分数都更有价值。';
+  }else if(charId==='nervous'&&total>=500){
+    summary='你扛住了。虽然紧张一直伴随着你，但你没有放弃，这就是最大的胜利。';
+  }else if(charId==='nervous'&&total>=450){
+    summary='尽管压力很大，你还是坚持考完了。这份韧性，比分数更珍贵。';
+  }else if(charId==='repeat'&&total>=600){
+    summary='复读的一年没有白费。你比去年的自己，走得更远了。这一次，你无愧于心。';
+  }else if(charId==='repeat'&&total>=550){
+    summary='复读的一年没有白费。你比去年的自己，走得更远了。';
+  }else if(charId==='county'&&total>=550){
+    summary='县城的资源有限，但你用努力弥补了一切。你证明了，出身不决定命运。';
+  }else if(charId==='county'&&total>=500){
+    summary='从县城走出来的你，用努力证明了自己。这条路，你走对了。';
+  }else if(charId==='leftbehind'&&total>=500){
+    summary='一个人的日子教会了你坚强。这份独立，会让你走得更远。';
+  }else if(charId==='familyCrisis'&&total>=500){
+    summary='经历了那么多，你还能坐在这里考出这样的成绩。你比任何人都坚强。';
+  }else if(charId==='familyCrisis'&&total>=450){
+    summary='经历了那么多，你还能坐在这里考完试。这本身就是一种胜利。';
+  }else if(charId==='slackoff'&&total>=500){
+    summary='从摆烂到认真，你完成了蜕变。这个分数，是你重新出发的起点。';
+  }else if(charId==='slackoff'&&total>=400){
+    summary='从摆烂到坚持，你的改变比分数更有意义。';
+  }else if(charId==='art'&&total>=450){
+    summary='集训和文化课两头烧，你撑过来了。艺术生的路，注定不平凡。';
+  }else if(charId==='science'&&total>=600){
+    summary='理科大神的实力，在考场上展现得淋漓尽致。';
+  }else if(charId==='competition'&&total>=550){
+    summary='竞赛训练出的思维能力和毅力，让你在高考中也游刃有余。';
+  }else if(charId==='preadmit'&&total>=550){
+    summary='没能保送的不甘，化作了考场上的动力。你证明了自己的选择。';
+  }else if(charId==='biased'&&total>=500){
+    summary='偏科的你，用强项拉回了分数。这就是你的生存之道。';
+  }
+
+  let peakPressureSubject='';
+  if(state.pressureBySubject){
+    let maxP=0;
+    Object.keys(state.pressureBySubject).forEach(subj=>{
+      if(state.pressureBySubject[subj]>maxP){
+        maxP=state.pressureBySubject[subj];
+        const subjObj=SUBJECTS.find(s=>s.id===subj);
+        peakPressureSubject=subjObj?subjObj.name:subj;
+      }
+    });
+  }
+  if(peakPressureSubject&&maxPressure>=60){
+    summary+=`<br><span style="font-size:.85em;color:var(--text-dim)">（最高压力出现在${peakPressureSubject}，但你还是熬过来了。）</span>`;
+  }
+
+  const maxSubj=Math.max(...Object.values(subjScores));
+  const minSubj=Math.min(...Object.values(subjScores));
+
+  globalStats.totalRounds++;
+  if(state.maxPressureReached>=85){
+    globalStats.roundsWithPressureOver85++;
+  }
+  if(total<80){
+    globalStats.consecutiveLowScores++;
+  }else{
+    globalStats.consecutiveLowScores=0;
+  }
+  if(state.charId==='science'){
+    globalStats.scienceGodUsed=true;
+    globalStats.scienceGodScore=Math.max(globalStats.scienceGodScore||0,total);
+  }
+  globalStats.highScore=Math.max(globalStats.highScore||0,total);
+  if(!globalStats.charHighScores)globalStats.charHighScores={};
+  const charHighScore=globalStats.charHighScores[state.charId]||0;
+  globalStats.charHighScores[state.charId]=Math.max(charHighScore,total);
+  saveGlobalStats();
+
+  const newAchievements=[];
+  if(unlockAchievement('first_round'))newAchievements.push('初次体验');
+  if(total>=600&&unlockAchievement('high_scorer'))newAchievements.push('高分达人');
+  if(total>680&&unlockAchievement('perfect'))newAchievements.push('完美发挥');
+  if(maxPressure<=60&&unlockAchievement('low_pressure'))newAchievements.push('心态平和');
+  if(charId==='nervous'&&total>=500&&unlockAchievement('nervous_high'))newAchievements.push('逆风翻盘');
+  if(charId==='county'&&unlockAchievement('county_warrior'))newAchievements.push('县城战士');
+  if(charId==='competition'&&total>=(globalStats.competitionHighScore||0)&&unlockAchievement('competition_master'))newAchievements.push('竞赛之王');
+  
+  if(charId==='competition'){
+    globalStats.competitionHighScore=Math.max(globalStats.competitionHighScore||0,total);
+  }
+  
+  if(state.triggered){
+    if(!globalStats.charTriggerCounts)globalStats.charTriggerCounts={};
+    globalStats.charTriggerCounts[charId]=(globalStats.charTriggerCounts[charId]||0)+1;
+    globalStats.lastTriggeredChar=charId;
+    
+    if(charId==='normal'&&unlockAchievement('trigger_normal'))newAchievements.push('喝口热汤也挺好');
+    if(charId==='repeat'&&unlockAchievement('trigger_repeat'))newAchievements.push('又是这个位置');
+    if(charId==='art'&&unlockAchievement('trigger_art'))newAchievements.push('集训之外的甜');
+    if(charId==='science'&&unlockAchievement('trigger_science'))newAchievements.push('这题我会');
+    if(charId==='biased'&&unlockAchievement('trigger_biased'))newAchievements.push('偏得理直气壮');
+    if(charId==='nervous'&&unlockAchievement('trigger_nervous'))newAchievements.push('手又开始抖了');
+    if(charId==='county'&&unlockAchievement('trigger_county'))newAchievements.push('家里的味道');
+    if(charId==='competition'&&unlockAchievement('trigger_competition'))newAchievements.push('竞赛生的本能');
+    if(charId==='leftbehind'&&unlockAchievement('trigger_leftbehind'))newAchievements.push('有人惦记');
+    if(charId==='familyCrisis'&&unlockAchievement('trigger_familyCrisis'))newAchievements.push('撑过就好');
+    if(charId==='preadmit'&&unlockAchievement('trigger_preadmit'))newAchievements.push('还要证明一次');
+    if(charId==='slackoff'&&unlockAchievement('trigger_slackoff'))newAchievements.push('现在开始也不晚');
+  }
+  
+  saveGlobalStats();
+
+  const unlocks=[];
+  if(globalStats.totalRounds>=1&&!CHARS.find(c=>c.id==='repeat').unlocked){CHARS.find(c=>c.id==='repeat').unlocked=true;unlocks.push('复读生');}
+  if(globalStats.totalRounds>=2&&!CHARS.find(c=>c.id==='art').unlocked){CHARS.find(c=>c.id==='art').unlocked=true;unlocks.push('艺考生');}
+  if(globalStats.totalRounds>=3&&!CHARS.find(c=>c.id==='science').unlocked){CHARS.find(c=>c.id==='science').unlocked=true;unlocks.push('理科大神');}
+  if(globalStats.totalRounds>=4&&!CHARS.find(c=>c.id==='biased').unlocked){CHARS.find(c=>c.id==='biased').unlocked=true;unlocks.push('偏科战神');}
+  if(total<90&&!CHARS.find(c=>c.id==='nervous').unlocked){CHARS.find(c=>c.id==='nervous').unlocked=true;unlocks.push('发挥失常型');}
+  if(globalStats.totalRounds>=5&&!CHARS.find(c=>c.id==='county').unlocked){CHARS.find(c=>c.id==='county').unlocked=true;unlocks.push('县城考生');}
+  if(globalStats.scienceGodUsed&&globalStats.scienceGodScore>=120&&!CHARS.find(c=>c.id==='competition').unlocked){CHARS.find(c=>c.id==='competition').unlocked=true;unlocks.push('竞赛生');}
+  if(globalStats.totalRounds>=6&&!CHARS.find(c=>c.id==='leftbehind').unlocked){CHARS.find(c=>c.id==='leftbehind').unlocked=true;unlocks.push('留守儿童');}
+  if(globalStats.roundsWithPressureOver85>=2&&!CHARS.find(c=>c.id==='familyCrisis').unlocked){CHARS.find(c=>c.id==='familyCrisis').unlocked=true;unlocks.push('家庭变故型');}
+  if(total>=130&&!CHARS.find(c=>c.id==='preadmit').unlocked){CHARS.find(c=>c.id==='preadmit').unlocked=true;unlocks.push('保送边缘型');}
+  if(globalStats.consecutiveLowScores>=2&&!CHARS.find(c=>c.id==='slackoff').unlocked){CHARS.find(c=>c.id==='slackoff').unlocked=true;unlocks.push('摆烂觉醒型');}
+  saveUnlocks();
+  
+  const allCharsUnlocked=CHARS.every(c=>c.unlocked);
+  if(allCharsUnlocked&&unlockAchievement('all_chars'))newAchievements.push('全角色解锁');
+
+  const history=loadHistory();
+  history.push({char:state.charId,total,scores:subjScores,pressure:state.maxPressureReached,date:new Date().toLocaleDateString()});
+  saveHistory(history);
+
+  let breakdownHtml=state.selectedSubjects.map(subjectId=>{
+    const subj=SUBJECTS.find(s=>s.id===subjectId);
+    return `<div class="row"><span class="subj-name">${subj.name}</span><span class="subj-score">${subjScores[subjectId]}分</span></div>`;
+  }).join('');
+
+  let unlockHtml='';
+  if(unlocks.length){
+    const unlockDetails=unlocks.map(name=>{
+      const c=CHARS.find(ch=>ch.name===name);
+      return c?`${c.name}（${c.tag}）`:name;
+    });
+    unlockHtml=`<div class="unlock-banner auto-fade"><div class="unlock-title">🔓 新角色解锁！</div><div class="unlock-name">${unlockDetails.join('、')}</div></div>`;
+  }
+
+  let achievementHtml='';
+  if(newAchievements.length){
+    achievementHtml=`<div class="unlock-banner auto-fade" style="background:linear-gradient(135deg,rgba(161,140,209,.2),rgba(96,165,250,.15));border-color:rgba(161,140,209,.5);margin-top:12px"><div class="unlock-title" style="color:var(--care)">🏆 新成就解锁！</div><div class="unlock-name">${newAchievements.join('、')}</div></div>`;
+  }
+
+  let reviewHtml='';
+  const triggerStatus=state.triggered?'✨ 已触发':'○ 未触发';
+  const triggerClass=state.triggered?'triggered':'not-triggered';
+  const crammingStatus=state.cramming?'📚 抱佛脚':'😴 未抱佛脚';
+  const careCount=state.careEventTriggered||0;
+  const careStatus=careCount>0?`💝 ${careCount}次关怀`:'💝 无关怀';
+  
+  const peakSubjDisplay=peakPressureSubject||'未知';
+  
+  reviewHtml=`<div style="margin-top:12px;padding:10px;background:rgba(0,0,0,.04);border-radius:8px;font-size:.75em;color:var(--text-dim);text-align:center;line-height:1.8">
+    <div>${crammingStatus} · ${careStatus}</div>
+    <div>最高压力: <strong style="color:${maxPressure>70?'var(--bad)':maxPressure>50?'var(--accent)':'var(--good)'}">${maxPressure}%</strong>（${peakSubjDisplay}） · 
+    隐藏属性: <strong style="color:${state.triggered?'var(--accent)':'var(--text-dim)'}" class="${triggerClass}">${triggerStatus}</strong></div>
+  </div>`;
+
+  showProgressText(false);
+
+  render(`
+    <div class="card">
+      <div class="result-card">
+        <h2>高考结束</h2>
+        <div class="result-tier" style="color:${tierColor};font-size:1.4em;margin:12px 0">${tier}</div>
+        <div class="result-score">${total}</div>
+        ${charHighScore>0&&total>=charHighScore?'<div style="font-size:.82em;color:var(--accent);margin-bottom:8px">🏆 新历史最高！</div>':''}
+        ${charHighScore>0&&total<charHighScore?`<div style="font-size:.78em;color:var(--text-dim);margin-bottom:8px">历史最高: ${charHighScore}分</div>`:''}
+        ${reviewHtml}
+        <div class="result-summary">${summary}</div>
+        ${achievementHtml}
+        ${unlockHtml}
+        <details class="result-breakdown-details" style="margin:16px 0;text-align:left">
+          <summary style="cursor:pointer;color:var(--text-dim);font-size:.88em;padding:8px 0;user-select:none">查看各科明细</summary>
+          <div class="result-breakdown" style="margin-top:8px">${breakdownHtml}</div>
+        </details>
+        <div class="final-msg">希望所有学子都能考上理想的学校。<br>无论结果如何，你都是最棒的。</div>
+        <button class="btn btn-primary mt24" onclick="renderTitle()">再来一局</button>
+        <button class="btn btn-option mt8" style="text-align:center;font-weight:600" onclick="selectChar('${charId}')">用 ${char.name} 再来一次</button>
+      </div>
+    </div>`);
+}
+
+createStars();
+renderTitle();
+</script>
+</body>
+</html>
