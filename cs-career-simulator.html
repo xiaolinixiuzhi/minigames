@@ -138,14 +138,15 @@ td{padding:8px;border-bottom:1px solid rgba(42,42,74,.5)}
       <div class="form-group"><label>姓名</label><input id="c-name" placeholder="输入姓名" value=""></div>
       <div class="form-group"><label>游戏ID</label><input id="c-ign" placeholder="游戏内ID" value=""></div>
     </div>
+    <div style="text-align:center;margin-top:8px"><button class="btn-secondary" onclick="randomizeIdentity()">🎲 随机姓名和ID</button></div>
     <div class="grid-2">
       <div class="form-group"><label>国籍</label><select id="c-nat"><option value="中国">中国</option><option value="美国">美国</option><option value="瑞典">瑞典</option><option value="丹麦">丹麦</option><option value="巴西">巴西</option><option value="俄罗斯">俄罗斯</option><option value="乌克兰">乌克兰</option><option value="法国">法国</option><option value="德国">德国</option><option value="波兰">波兰</option><option value="加拿大">加拿大</option><option value="日本">日本</option><option value="韩国">韩国</option><option value="澳大利亚">澳大利亚</option></select></div>
-      <div class="form-group"><label>起始年龄</label><select id="c-age"><option value="16">16岁</option><option value="17">17岁</option><option value="18" selected>18岁</option><option value="19">19岁</option><option value="20">20岁</option></select></div>
+      <div class="form-group"><label>起始年龄</label><select id="c-age" onchange="onCreationAgeChange()"><option value="16">16岁</option><option value="17">17岁</option><option value="18" selected>18岁</option><option value="19">19岁</option><option value="20">20岁</option></select></div>
     </div>
     <div class="form-group"><label>起始年份</label><select id="c-year"><option value="2015" selected>2015 (CS:GO)</option><option value="2016">2016 (CS:GO)</option><option value="2017">2017 (CS:GO)</option><option value="2018">2018 (CS:GO)</option><option value="2019">2019 (CS:GO)</option><option value="2020">2020 (CS:GO 疫情)</option><option value="2021">2021 (CS:GO)</option><option value="2022">2022 (CS:GO)</option><option value="2023">2023 (CS2)</option><option value="2024">2024 (CS2)</option><option value="2025">2025 (CS2)</option></select></div>
     <div class="form-group"><label>位置</label><select id="c-role"><option value="AWPer">AWPer - 狙击手</option><option value="Rifler">Rifler - 步枪手</option><option value="Entry">Entry - 突破手</option><option value="Support">Support - 辅助</option><option value="IGL">IGL - 指挥</option><option value="Lurker">Lurker - 潜伏者</option></select></div>
-    <div class="section-title" style="margin-top:16px">属性分配</div>
-    <div class="points-left">剩余点数：<span id="c-points">10</span></div>
+    <div class="section-title" style="margin-top:16px">属性分配（六项共用 300 点，单项 20–80）</div>
+    <div class="points-left">已分配：<span id="c-allocated">0</span> ｜ 剩余点数：<span id="c-points">0</span></div>
     <div id="attr-alloc-container"></div>
     <div style="text-align:center;margin-top:20px;display:flex;gap:10px;justify-content:center">
       <button class="btn-secondary" onclick="randomizeAttrs()">🎲 随机天赋</button>
@@ -201,6 +202,11 @@ td{padding:8px;border-bottom:1px solid rgba(42,42,74,.5)}
 // CONSTANTS
 // ============================================================
 const ATTRS = ['aim','gameSense','utility','communication','consistency','mental','physical'];
+// 开局可自由分配的六项属性：共用固定预算，单项 20-80
+const CREATE_ATTRS = ['aim','gameSense','utility','communication','consistency','mental'];
+const CREATE_MIN = 20;
+const CREATE_MAX = 80;
+const CREATE_BUDGET = 300;
 const ATTR_NAMES = {aim:'Aim 枪法',gameSense:'Game Sense 意识',utility:'Utility 道具',communication:'Communication 沟通',consistency:'Consistency 稳定',mental:'Mental 心理',physical:'Physical 体能'};
 const ATTR_SHORT = {aim:'枪法',gameSense:'意识',utility:'道具',communication:'沟通',consistency:'稳定',mental:'心理',physical:'体能'};
 const ROLE_WEIGHTS = {
@@ -254,13 +260,10 @@ const TEAM_TIER_BONUS = {
 };
 
 function getPhysicalAgeCoeff(age) {
-  if (age <= 27) {
-    const progress = (age - 16) / 11;
-    return 0.60 + progress * 0.40;
-  } else {
-    const decline = (age - 27) / 13;
-    return Math.max(0.40, 1.00 - decline * 0.60);
-  }
+  // 体能年龄曲线：16-17 成长期，18-30 岁保持较高水平（平台期），30 岁后逐年衰退
+  if (age < 18) return 0.60 + (age - 16) * 0.10; // 16岁0.60 → 17岁0.70
+  if (age <= 30) return 0.95;                    // 18-30 岁平台期
+  return Math.max(0.45, 0.95 - (age - 30) * 0.045); // 31岁起每年约-3.8%
 }
 
 function getMaxPhysical(age, physicalCap) {
@@ -1281,10 +1284,17 @@ function getTeamRostersByYear(year){
   return {...(_expandedYearlyTeams[nearestYear] || {})};
 }
 
-// Get a random team roster for a specific year and tier
+// Get a random team roster for a specific year and tier (never the player's own team)
 function getRandomTeamRosterByYear(year, targetTier){
   const rosters = getTeamRostersByYear(year);
-  const matchingTeams = Object.values(rosters).filter(t=>t.tier===targetTier);
+  const own=G&&G.team?G.team.name:null;
+  let matchingTeams = Object.values(rosters).filter(t=>t.tier===targetTier&&(!own||t.name!==own));
+  if(matchingTeams.length===0){
+    matchingTeams = Object.values(rosters).filter(t=>t.tier===targetTier);
+  }
+  if(matchingTeams.length===0){
+    matchingTeams = Object.values(rosters).filter(t=>!own||t.name!==own);
+  }
   if(matchingTeams.length>0) return matchingTeams[rand(0,matchingTeams.length-1)];
   return null;
 }
@@ -1640,238 +1650,331 @@ function getQualificationChance(teamTier, recentRating){
   }
 }
 
-// Simulate Swiss stage (BO3 rounds, 3 wins advance, 3 losses eliminated)
-function simulateSwissStage(playerPower, teamTier, opponentRange){
-  let wins = 0, losses = 0;
-  let totalRating = 0;
-  let matches = 0;
-  const [minOpp, maxOpp] = opponentRange;
-  
-  while(wins < 3 && losses < 3){
-    matches++;
-    // Opponent strength varies, generally increases with rounds
-    const oppSkill = minOpp + (maxOpp - minOpp) * (matches / 6) + rand(-5, 5);
-    // Use team roster for opponent
-    const oppTier = oppSkill > 85 ? 'topTier' : oppSkill > 70 ? 'tier1' : oppSkill > 55 ? 'tier2' : 'tier3';
-    const roster = getRandomTeamRoster(oppTier);
-    const oppPower = calculateOpponentPower(oppSkill, 'tier1', roster);
-    
-    // Calculate match rating
-    const ratingDiff = (playerPower - oppPower) / 100;
-    const matchRating = 1.0 + ratingDiff + randf(-0.08, 0.08);
-    totalRating += matchRating;
-    
-    // Win probability
-    const winProb = playerPower / (playerPower + oppPower);
-    if(Math.random() < winProb){
-      wins++;
-    } else {
-      losses++;
+// ============================================================
+// 统一赛事引擎：Major / 一线 / 预选赛共用同一套阶段与赛果
+// ============================================================
+const MAJOR_KEYS = {
+  'starladder berlin major 2019':'berlin2019',
+  'iem katowice 2019':'katowice2019',
+  'faceit major london 2018':'london2018',
+  'eleague major boston 2018':'boston2018',
+  'pgl major stockholm 2021':'stockholm2021',
+  'pgl major antwerp 2022':'antwerp2022',
+  'iem rio major 2022':'rio2022',
+  'blast.tv paris major 2023':'paris2023',
+  'perfect world shanghai major 2024':'shanghai2024',
+  'mlg columbus 2016':'columbus2016',
+  'esl one cologne 2016':'cologne2016',
+  'esl one katowice 2015':'katowice2015',
+  'esl one cologne 2015':'cologne2015',
+  'dreamhack cluj-napoca 2015':'cluj2015',
+  'eleague major atlanta 2017':'atlanta2017',
+  'pgl major kraków 2017':'krakow2017',
+  'pgl major krakow 2017':'krakow2017'
+};
+const MAJOR_RIVALS = {
+  berlin2019:'Astralis', katowice2019:'Astralis', london2018:'Astralis',
+  boston2018:'FaZe', stockholm2021:'NaVi', paris2023:'Vitality',
+  shanghai2024:'Spirit', antwerp2022:'FaZe', rio2022:'Outsiders',
+  cologne2016:'SK Gaming'
+};
+const PLACEMENT_TEXT = {champion:'冠军',runnerUp:'亚军',top4:'四强',top8:'八强',top16:'十六强',swissOut:'小组出局',qualified:'预选赛晋级'};
+
+function getMajorKey(event){
+  const n=(event.name||'').toLowerCase();
+  for(const k in MAJOR_KEYS){if(n.includes(k))return MAJOR_KEYS[k];}
+  return `major${G.year}_${event.month||G.month}`;
+}
+function findRosterByName(name,year){
+  if(!name)return null;
+  const rosters=getTeamRostersByYear(year);
+  const hit=Object.values(rosters).find(t=>(t.name||'').toLowerCase()===name.toLowerCase());
+  return hit||null;
+}
+function getMajorRival(event){
+  const key=getMajorKey(event);
+  const want=MAJOR_RIVALS[key];
+  if(want){
+    for(const y of [G.year,2019,2018,G.year-1,G.year+1]){
+      const r=findRosterByName(want,y);
+      if(r&&(!G.team||r.name!==G.team.name))return r;
     }
   }
-  
-  const advanced = wins >= 3;
-  const avgRating = matches > 0 ? totalRating / matches : 1.0;
-  return { advanced, wins, losses, matches, avgRating };
+  const tops=Object.values(getTeamRostersByYear(G.year)).filter(t=>t.tier==='topTier'&&(!G.team||t.name!==G.team.name));
+  return tops.length?tops[rand(0,tops.length-1)]:null;
+}
+function getEventOpponent(event,stageIndex,stageName){
+  if(event.tier==='major'&&stageName==='决赛'){
+    const rival=getMajorRival(event);
+    if(rival)return {roster:rival,skill:calcTeamStrength(rival.players)/5};
+  }
+  let pool;
+  if(event.tier==='major')pool=['topTier','topTier','topTier','tier1'];
+  else if(event.tier==='superElite')pool=['topTier','tier1','tier1','tier2'];
+  else if(event.tier==='tier1')pool=['tier1','tier1','tier1','tier2'];
+  else if(event.tier==='tier2')pool=['tier2','tier2','tier3','tier3'];
+  else pool=['tier3','tier3','tier3','tier2'];
+  const tier=pool[Math.min(stageIndex,pool.length-1)];
+  const roster=getRandomTeamRoster(tier);
+  return {roster,skill:roster?calcTeamStrength(roster.players)/5:getTeamOpponentStrength(G.careerLevel,tier,G.year)};
+}
+function findPreQualification(event){
+  const list=G.qualifiedEvents||[];
+  return list.find(q=>q.eventName===event.name&&q.eventYear===G.year&&
+    (!q.teamId||(G.team&&q.teamId===G.team.id)))||null;
+}
+function consumeQualification(event){
+  const q=findPreQualification(event);
+  if(q){
+    G.qualifiedEvents=G.qualifiedEvents.filter(x=>x!==q);
+  }
+  return q;
+}
+function grantQualification(event){
+  if(!G.team||!event.qualifiesFor)return false;
+  const q={
+    eventName:event.qualifiesFor,
+    eventYear:event.qualifiesForYear||G.year,
+    eventMonth:event.qualifiesForMonth,
+    teamId:G.team.id
+  };
+  const exists=(G.qualifiedEvents||[]).some(x=>x.eventName===q.eventName&&x.eventYear===q.eventYear&&x.teamId===q.teamId);
+  if(exists)return false;
+  G.qualifiedEvents.push(q);
+  G.eventLog.push({text:`🏆 赢得 ${event.name}，获得 ${q.eventName} 参赛资格（${G.team.name}）！`,type:'positive',month:G.month,year:G.year});
+  return true;
+}
+function roundMapText(series){
+  return (series.maps||[]).map(m=>`${m.map} ${m.score}`).join(' / ');
 }
 
-// Simulate Playoff stage (single elimination)
-function simulatePlayoffs(playerPower, teamTier, opponentRange, startingRound){
-  const [minOpp, maxOpp] = opponentRange;
-  let round = startingRound; // 1=QF, 2=SF, 3=Final
-  let wins = 0, losses = 0;
-  let totalRating = 0;
-  let matches = 0;
-  
-  while(round <= 3){
-    matches++;
-    // Stronger opponents in later rounds
-    const oppSkill = minOpp + (maxOpp - minOpp) * ((round + 1) / 4) + rand(-3, 5);
-    // Use team roster for opponent
-    const oppTier = oppSkill > 85 ? 'topTier' : oppSkill > 70 ? 'tier1' : oppSkill > 55 ? 'tier2' : 'tier3';
-    const roster = getRandomTeamRoster(oppTier);
-    const oppPower = calculateOpponentPower(oppSkill, 'tier1', roster);
-    
-    // BO3 for QF/SF, BO5 for Final
-    const isFinal = round === 3;
-    const roundsToWin = isFinal ? 3 : 2;
-    let roundWins = 0, roundLosses = 0;
-    
-    while(roundWins < roundsToWin && roundLosses < roundsToWin){
-      const ratingDiff = (playerPower - oppPower) / 100;
-      const matchRating = 1.0 + ratingDiff + randf(-0.08, 0.08);
-      totalRating += matchRating;
-      
-      const winProb = playerPower / (playerPower + oppPower);
-      if(Math.random() < winProb){
-        roundWins++;
-      } else {
-        roundLosses++;
+function simulateSwissEvent(event){
+  let wins=0,losses=0,round=0;
+  const seriesList=[];
+  while(wins<3&&losses<3){
+    round++;
+    const {roster,skill}=getEventOpponent(event,round-1,'瑞士轮');
+    const s=simulateSeries({
+      opponentRoster:roster,opponentSkill:skill,tier:event.tier,matchType:event.tier,
+      isTournament:true,isPlayoff:false,isFinal:false,format:'BO3',
+      roundName:`瑞士轮第${round}轮`,event
+    });
+    if(s.win)wins++;else losses++;
+    seriesList.push(s);
+    event.rounds.push({stage:`瑞士轮第${round}轮`,opponent:s.opponent,score:s.score,win:s.win,maps:s.maps.map(m=>({map:m.map,score:m.score,win:m.win,rating:m.rating}))});
+  }
+  const ratingSum=seriesList.reduce((a,s)=>a+s.ratingSum,0);
+  const mapCount=seriesList.reduce((a,s)=>a+s.maps.length,0);
+  return {advanced:wins>=3,wins,losses,series:seriesList,avgRating:mapCount?ratingSum/mapCount:1.0,mapCount};
+}
+
+function simulatePlayoffEvent(event,startRound){
+  const names=startRound===0
+    ? ['四分之一决赛','半决赛','决赛']
+    : ['半决赛','决赛'];
+  let placement='top8';
+  const seriesList=[];
+  for(let i=0;i<names.length;i++){
+    const stageName=names[i];
+    const isFinal=stageName==='决赛';
+    const {roster,skill}=getEventOpponent(event,i+startRound,stageName);
+    const s=simulateSeries({
+      opponentRoster:roster,opponentSkill:skill,tier:event.tier,matchType:event.tier,
+      isTournament:true,isPlayoff:true,isFinal,format:isFinal?'BO5':'BO3',
+      roundName:stageName,event
+    });
+    seriesList.push(s);
+    event.rounds.push({stage:stageName,opponent:s.opponent,score:s.score,win:s.win,maps:s.maps.map(m=>({map:m.map,score:m.score,win:m.win,rating:m.rating}))});
+    if(!s.win){
+      placement=isFinal?'runnerUp':(stageName==='半决赛'?'top4':'top8');
+      break;
+    }
+    if(isFinal)placement='champion';
+  }
+  const ratingSum=seriesList.reduce((a,s)=>a+s.ratingSum,0);
+  const mapCount=seriesList.reduce((a,s)=>a+s.maps.length,0);
+  return {placement,series:seriesList,avgRating:mapCount?ratingSum/mapCount:1.0,mapCount,
+    reachedFinal:placement==='champion'||placement==='runnerUp'};
+}
+
+function simulateKnockoutEvent(event){
+  const isQualifier=event.isQualifier||event.tier==='qualifier';
+  const rounds=isQualifier?3:(event.tier==='tier3'?2:3);
+  const names=isQualifier?['预选赛第一轮','预选赛第二轮','晋级赛']
+    :(rounds===2?['半决赛','决赛']:['四分之一决赛','半决赛','决赛']);
+  let wins=0;
+  const seriesList=[];
+  for(let i=0;i<rounds;i++){
+    const {roster,skill}=getEventOpponent(event,i,names[i]);
+    const s=simulateSeries({
+      opponentRoster:roster,opponentSkill:skill,tier:event.tier,matchType:event.tier,
+      isTournament:true,isPlayoff:true,isFinal:i===rounds-1,
+      format:i===rounds-1?'BO3':'BO1',roundName:names[i],event
+    });
+    seriesList.push(s);
+    event.rounds.push({stage:names[i],opponent:s.opponent,score:s.score,win:s.win,maps:s.maps.map(m=>({map:m.map,score:m.score,win:m.win,rating:m.rating}))});
+    if(!s.win)break;
+    wins++;
+  }
+  let placement;
+  if(isQualifier){
+    placement=wins===rounds?'qualified':(wins>=2?'top4':'top8');
+  }else if(wins===rounds){
+    placement='champion';
+  }else if(wins===rounds-1){
+    placement='runnerUp';
+  }else if(wins>=1){
+    placement='top4';
+  }else{
+    placement='top8';
+  }
+  const ratingSum=seriesList.reduce((a,s)=>a+s.ratingSum,0);
+  const mapCount=seriesList.reduce((a,s)=>a+s.maps.length,0);
+  return {placement,wins,rounds,series:seriesList,avgRating:mapCount?ratingSum/mapCount:1.0,mapCount,
+    advanced:isQualifier?wins===rounds:wins>=Math.ceil(rounds/2)};
+}
+
+function finishEvent(event,result){
+  const tier=event.tier;
+  const teamTier=G.team?.tier||'tier2';
+  const prizeTier=tier==='qualifier'?'tier3':tier;
+  const prizePool=getPrizePool(prizeTier,G.year);
+  const placement=result.placement;
+  const prizeKey=placement==='qualified'?'top8':placement;
+  const playerPrize=prizePool>0&&prizeKey?calculatePlayerPrize(prizePool,prizeKey,teamTier):0;
+  G.money+=playerPrize;
+  const reward={champion:{p:-20,m:30},runnerUp:{p:-10,m:20},top4:{p:-5,m:10},top8:{p:0,m:5},top16:{p:3,m:2},swissOut:{p:5,m:0},qualified:{p:-3,m:2}}[placement]||{p:0,m:0};
+  G.pressure=clamp(G.pressure+reward.p,0,100);
+  G.marketAttention=clamp(G.marketAttention+reward.m,0,100);
+  const fatigueType=tier==='major'?'major':tier==='superElite'?'superElite_event':tier==='tier1'?'tier1_event':'tier2_event';
+  addEventFatigue(fatigueType);
+  if(G.team){
+    const mentalBase=(MENTAL_BASE_BY_TIER[tier]||MENTAL_BASE_BY_TIER.tier1).playoff;
+    const mentalGain=Math.max(0,(mentalBase-G.player.attrs.mental)/20)*mentalAgeCoeff(G.player.age);
+    G.player.attrs.mental=Math.min(G.player.potential.mental,G.player.attrs.mental+mentalGain);
+    if(result.avgRating>1.15)G.player.form=clamp(G.player.form+rand(5,12),0,100);
+    else if(result.avgRating<0.90)G.player.form=clamp(G.player.form-rand(5,10),0,100);
+  }
+  const isMajor=tier==='major';
+  if(isMajor){
+    if(placement!=='swissOut'&&placement!=='top16')checkAchievement('major_playoff');
+    if(placement==='champion'||placement==='runnerUp'){
+      checkAchievement('major_final');
+      if(placement==='champion'){
+        checkAchievement('major_champion');
+        if(result.avgRating>=1.15)checkAchievement('major_mvp');
+        const key=getMajorKey(event);
+        if(!G.majorWins.includes(key))G.majorWins.push(key);
+        const finalRound=event.rounds[event.rounds.length-1];
+        const finalOpp=finalRound?finalRound.opponent:'';
+        G.beatAstralis=!!/astralis/i.test(finalOpp);
+        G._majorWins=G.majorWins;
+        G._beatAstralis=G.beatAstralis;
+        G._beatNaVi=!!/navi|natus/i.test(finalOpp);
+        G._beatVitality=!!/vitality/i.test(finalOpp);
+        G._beatSpirit=!!/spirit/i.test(finalOpp);
+        G._beatFaZe=!!/faze/i.test(finalOpp);
+        G._beatOutsiders=!!/outsiders/i.test(finalOpp);
+        G._beatSK=!!/sk gaming/i.test(finalOpp);
+        G._isCloud9=!!(/cloud9/i.test(G.team?G.team.name:''));
+        G._consecutiveMajorWins=(G._consecutiveMajorWins||0)+1;
       }
     }
-    
-    if(roundWins >= roundsToWin){
-      wins++;
-      round++;
-    } else {
-      losses++;
-      break;
-    }
+    if(placement!=='champion')G._consecutiveMajorWins=0;
   }
-  
-  const avgRating = matches > 0 ? totalRating / matches : 1.0;
-  const placement = round === 4 ? 'champion' : round === 3 ? 'runner-up' : round === 2 ? 'top4' : 'top8';
-  return { placement, wins, losses, matches, avgRating, reachedFinal: round >= 3 };
+  if(placement==='champion'){
+    const text=`${G.year} ${event.name} 冠军`;
+    if(!G.career.achievements.includes(text))G.career.achievements.push(text);
+  }else if(placement==='runnerUp'){
+    const text=`${G.year} ${event.name} 亚军`;
+    if(!G.career.achievements.includes(text))G.career.achievements.push(text);
+  }
+  if(result.placement==='qualified')grantQualification(event);
+  const staminaCost=event.actualStamina||0;
+  const roundText=event.rounds.map(r=>`${r.stage} vs ${r.opponent} ${r.score}`).join('；');
+  event.result={
+    qualified:true,placement,rounds:event.rounds,prize:playerPrize,prizePool,
+    avgRating:parseFloat((result.avgRating||0).toFixed(2)),
+    mapCount:result.mapCount||0,staminaCost,
+    series:result.series||[],
+    seriesCount:(result.series||[]).length,
+    mapsText:event.rounds.map(r=>`${r.stage}: ${(r.maps||[]).map(m=>m.map+' '+m.score).join(', ')}`).join(' | ')
+  };
+  G.tournamentResults.push({
+    name:event.name,tier,year:G.year,month:G.month,
+    placement,advanced:placement!=='swissOut'&&placement!=='top16',
+    rounds:(result.series||[]).length,wins:(result.series||[]).filter(s=>s.win).length,
+    maps:event.rounds,staminaCost,prizePool,
+    prize:playerPrize,avgRating:event.result.avgRating,mapCount:event.result.mapCount
+  });
+  const placementText=PLACEMENT_TEXT[placement]||'参赛';
+  const type=placement==='champion'||placement==='runnerUp'?'positive':placement==='swissOut'?'negative':'neutral';
+  G.eventLog.push({
+    text:`${event.name} - ${placementText}（${roundText}），地图：${event.result.mapsText||'无'}，均分Rating ${event.result.avgRating}，个人奖金 ${formatMoney(playerPrize)}`,
+    type,month:G.month,year:G.year
+  });
+  return event.result;
 }
 
-// Simulate complete Tier 1 event (ESL/PGL)
-function simulateTier1Event(event, eventType){
-  if(!G.team || !G.team.isStarter) return null;
-  
-  const config = TIER1_EVENT_CONFIG[eventType];
-  const teamTier = G.team.tier;
-  const recentRating = getRecentAvgRating(3) || 1.0;
-  
-  // Track tournament count for dense schedule check
+function simulateEvent(event){
+  if(!G.team){
+    event.result={qualified:false,stage:'no_team'};
+    return event.result;
+  }
+  const tier=event.tier;
+  const isMajor=tier==='major';
+  const isHigh=isMajor||tier==='superElite'||tier==='tier1';
+  event.rounds=event.rounds||[];
+  event.actualStamina=0;
   G.monthTournamentCount=(G.monthTournamentCount||0)+1;
-  
-  // Get prize pool for this event (based on tier and year)
-  const prizePool = getPrizePool('tier1', G.year);
-  
-  // Check if player has pre-qualified through qualifier event
-  const hasPreQualified = G.qualifiedEvents && G.qualifiedEvents.some(q =>
-    q.eventName === event.name && q.eventYear === G.year
-  );
-
-  // Check qualification (bypass if pre-qualified)
-  const qualChance = hasPreQualified ? 1.0 : getQualificationChance(teamTier, recentRating);
-  if(Math.random() > qualChance){
-    G.eventLog.push({text:`${config.name} - 未能获得参赛资格`,type:'negative',month:G.month,year:G.year});
-    return { qualified: false };
+  // 替补：按实际出场情况参与（20% 替补登场）
+  let subbedIn=false;
+  if(!G.team.isStarter){
+    if(Math.random()>=0.2){
+      event.result={qualified:false,stage:'benched'};
+      G.eventLog.push({text:`${event.name} - 你作为替补未获出场机会`,type:'neutral',month:G.month,year:G.year});
+      return event.result;
+    }
+    subbedIn=true;
+    G._forcePlayerLineup=true;
   }
-
-  // Achievement: first tier1 event
-  checkAchievement('first_tier1');
-  // Achievement: first major (if this is a major event)
-  if(eventType==='major') checkAchievement('first_major');
-
-  // Remove from qualified events if used
-  if(hasPreQualified){
-    G.qualifiedEvents = G.qualifiedEvents.filter(q =>
-      !(q.eventName === event.name && q.eventYear === G.year)
-    );
+  let qualified=true;
+  if(isHigh){
+    const pre=findPreQualification(event);
+    const chance=pre?1:getQualificationChance(G.team.tier,getRecentAvgRating(3)||1);
+    qualified=G._forceQualified!==undefined?!!G._forceQualified:(!!pre||Math.random()<chance);
+    if(pre)consumeQualification(event);
+    if(!qualified){
+      G.eventLog.push({text:`${event.name} - 未能获得参赛资格`,type:'negative',month:G.month,year:G.year});
+      event.result={qualified:false,stage:'unqualified'};
+      G._forcePlayerLineup=false;
+      return event.result;
+    }
   }
-  
-  // Player power for this event
-  const p = G.player;
-  const matchStage = 'tier1';
-  const matchesThisMonth = 8;
-  const playerPower = calculateMatchPower(p.attrs, p.role, matchStage, matchesThisMonth, p.form, p.fatigue);
-  const teamBonus = G.teamChemistry / 100 * 0.05;
-  const myEffective = playerPower * (1 + teamBonus);
-  
-  // Swiss stage
-  const swissResult = simulateSwissStage(myEffective, teamTier, config.opponentRange);
-  
-  // Calculate stamina cost for Swiss (BO3 series, avg 2.5 maps per series)
-  const swissMapsEstimated = Math.round(swissResult.matches * 2.5);
-  const swissStaminaCost = getMatchStaminaCost('tier1', swissMapsEstimated);
-  tryConsumeStamina(swissStaminaCost);
-  
-  if(!swissResult.advanced){
-    // Eliminated in Swiss - calculate player prize
-    const playerPrize = calculatePlayerPrize(prizePool, 'swissOut', teamTier);
-    G.money += playerPrize;
-    // Add event fatigue for participating
-    addEventFatigue('tier1_event');
-    G.eventLog.push({text:`${config.name} - 瑞士轮淘汰 (${swissResult.wins}胜${swissResult.losses}负)，平均Rating ${swissResult.avgRating.toFixed(2)}，个人奖金 ${formatMoney(playerPrize)}`,type:'negative',month:G.month,year:G.year});
-    G.pressure = clamp(G.pressure + 5, 0, 100);
-    return { qualified: true, stage: 'swiss_out', result: swissResult, prize: playerPrize, prizePool };
+  if(tier==='tier1'||tier==='superElite'||isMajor)checkAchievement('first_tier1');
+  if(isMajor)checkAchievement('first_major');
+  let result;
+  if(isHigh){
+    const swiss=simulateSwissEvent(event);
+    if(!swiss.advanced){
+      result={placement:'swissOut',series:swiss.series,avgRating:swiss.avgRating,mapCount:swiss.mapCount,swiss};
+    }else{
+      const playoff=simulatePlayoffEvent(event,0);
+      const allSeries=[...swiss.series,...playoff.series];
+      const mapCount=allSeries.reduce((a,s)=>a+s.maps.length,0);
+      const ratingSum=allSeries.reduce((a,s)=>a+s.ratingSum,0);
+      result={...playoff,series:allSeries,mapCount,
+        avgRating:mapCount?ratingSum/mapCount:1.0,swiss};
+    }
+  }else{
+    result=simulateKnockoutEvent(event);
   }
-  
-  // Playoffs
-  const playoffResult = simulatePlayoffs(myEffective, teamTier, config.opponentRange, 1);
-  
-  // Calculate stamina cost for Playoffs (QF/SF=BO3, Final=BO5)
-  let playoffMapsEstimated = 0;
-  if(playoffResult.wins >= 1) playoffMapsEstimated += 2.5; // QF
-  if(playoffResult.wins >= 2) playoffMapsEstimated += 2.5; // SF
-  if(playoffResult.wins >= 3) playoffMapsEstimated += 3.5; // Final (BO5)
-  playoffMapsEstimated = Math.round(playoffMapsEstimated);
-  const playoffStaminaCost = getMatchStaminaCost('tier1', playoffMapsEstimated);
-  tryConsumeStamina(playoffStaminaCost);
-  
-  // Rewards based on placement - calculate player prize
-  let prizeMoney = 0;
-  let pressureChange = 0;
-  let marketBonus = 0;
-  
-  switch(playoffResult.placement){
-    case 'champion':
-      prizeMoney = calculatePlayerPrize(prizePool, 'champion', teamTier);
-      pressureChange = -20;
-      marketBonus = 30;
-      G.career.achievements.push(`${G.year} ${config.name} 冠军`);
-      if(eventType==='major') checkAchievement('major_champion');
-      break;
-    case 'runner-up':
-      prizeMoney = calculatePlayerPrize(prizePool, 'runnerUp', teamTier);
-      pressureChange = -10;
-      marketBonus = 20;
-      G.career.achievements.push(`${G.year} ${config.name} 亚军`);
-      if(eventType==='major') checkAchievement('major_final');
-      break;
-    case 'top4':
-      prizeMoney = calculatePlayerPrize(prizePool, 'top4', teamTier);
-      pressureChange = -5;
-      marketBonus = 10;
-      if(eventType==='major') checkAchievement('major_playoff');
-      break;
-    case 'top8':
-      prizeMoney = calculatePlayerPrize(prizePool, 'top8', teamTier);
-      pressureChange = 0;
-      marketBonus = 5;
-      if(eventType==='major') checkAchievement('major_playoff');
-      break;
+  const finished=finishEvent(event,result);
+  if(subbedIn){
+    G._forcePlayerLineup=false;
+    G.eventLog.push({text:`${event.name} - 你替补登场并完成了比赛`,type:'neutral',month:G.month,year:G.year});
   }
-  
-  G.money += prizeMoney;
-  G.pressure = clamp(G.pressure + pressureChange, 0, 100);
-  G.marketAttention = clamp(G.marketAttention + marketBonus, 0, 100);
-  
-  // Add event fatigue for participating in tier1 event
-  addEventFatigue('tier1_event');
-  
-  // Update mental after Tier 1 event using tier-based mental base
-  const tierMental=MENTAL_BASE_BY_TIER['tier1'];
-  const mentalGain = Math.max(0, (tierMental.playoff - p.attrs.mental) / 20) * mentalAgeCoeff(p.age);
-  p.attrs.mental = Math.min(p.potential.mental, p.attrs.mental + mentalGain);
-  
-  // Update form based on performance
-  const overallAvgRating = (swissResult.avgRating + playoffResult.avgRating) / 2;
-  if(overallAvgRating > 1.15) p.form = clamp(p.form + rand(5, 12), 0, 100);
-  else if(overallAvgRating < 0.90) p.form = clamp(p.form - rand(5, 10), 0, 100);
-  
-  const placementText = {
-    'champion': '冠军',
-    'runner-up': '亚军',
-    'top4': '四强',
-    'top8': '八强'
-  }[playoffResult.placement];
-  
-  const totalStaminaCost = swissStaminaCost + playoffStaminaCost;
-  G.eventLog.push({text:`${config.name} - ${placementText}！瑞士轮${swissResult.wins}胜${swissResult.losses}负，淘汰赛${playoffResult.wins}胜${playoffResult.losses}负，Rating ${overallAvgRating.toFixed(2)}，个人奖金 ${formatMoney(prizeMoney)}（总池 ${formatMoney(prizePool)}）`,type:'positive',month:G.month,year:G.year});
-  
-  return {
-    qualified: true,
-    stage: 'playoffs',
-    swissResult,
-    playoffResult,
-    prize: prizeMoney,
-    prizePool: prizePool,
-    placement: playoffResult.placement,
-    staminaCost: totalStaminaCost
-  };
+  return finished;
 }
 
 // ============================================================
@@ -2283,201 +2386,201 @@ const HISTORICAL_EVENTS = [
     effects:{awper:{aim:0.5,mental:6},topTier:{mental:-3,pressure:4},bystander:{aim:0.2,mental:5}}},
   {id:'H05',name:'ZywOo崛起',yearRange:[2019,2023],desc:'17岁的ZywOo走进职业赛场，所有人都知道：一个新的时代开始了。他的AWP精准、冷静、致命。法国人找到了他们的英雄。',
     effects:{awper:{aim:0.4,mental:5},french:{mental:6},topTier:{mental:-2,pressure:3},bystander:{mental:4}}},
-  {id:'H06',name:'device的AWP统治',yearRange:[2018,2020],desc:'丹麦AWP的稳定发挥。',
+  {id:'H06',name:'device的AWP统治',yearRange:[2018,2020],desc:'device的AWP是Astralis体系的节拍器。他不追求高光，却总在最关键的时刻出现在最关键的位置。丹麦人用一种近乎冷酷的稳定告诉世界：不出错，本身就是统治。',
     effects:{awper:{consistency:0.4,mental:4},danish:{mental:5},topTier:{consistency:0.2},bystander:{mental:3}}},
-  {id:'H07',name:'simple vs ZywOo',yearRange:[2019,2022],desc:'两大天才的对决时代。',
+  {id:'H07',name:'simple vs ZywOo',yearRange:[2019,2022],desc:'s1mple和ZywOo，两代天才在同一个时代对轰。一个狂野如风暴，一个冷静如手术刀。每一次他们相遇，整个CS圈都会屏住呼吸——这可能是有史以来最幸福的时代。',
     effects:{awper:{aim:0.3,mental:4,pressure:2},topTier:{mental:-2,pressure:3},bystander:{mental:5}}},
   {id:'H08',name:'NiP不败神话',yearRange:[2015,2016],desc:'87-0。NiP的不败神话至今无人打破。f0rest、GeT_RiGhT、Xizt……瑞典人用他们的统治力告诉世界：CS可以这样打。',
     effects:{participant:{mental:10,fame:5},swedish:{mental:6},topTier:{mental:-2},bystander:{mental:4}}},
   {id:'H09',name:'coldzera双MVP',yearRange:[2016,2017],desc:'Columbus和Cologne，coldzera连续两届Major MVP。他的步枪像是有魔法，每一次击杀都让观众沸腾。巴西人的骄傲。',
     effects:{rifler:{aim:0.4,mental:5},brazilian:{mental:6},topTier:{aim:0.2},bystander:{mental:4}}},
-  {id:'H10',name:'kennyS的AWP艺术',yearRange:[2015,2017],desc:'法国AWP的华丽风格。',
+  {id:'H10',name:'kennyS的AWP艺术',yearRange:[2015,2017],desc:'kennyS的AWP不讲道理。蝴蝶步、跳狙、盲狙，他把狙击枪玩成了表演艺术。法国人的疯狂让观众永远相信：下一个镜头，奇迹就会出现。',
     effects:{awper:{aim:0.5,mental:4},french:{mental:6},topTier:{aim:0.2},bystander:{mental:3}}},
-  {id:'H11',name:'olofmeister的Carry',yearRange:[2014,2016],desc:'瑞典选手的巅峰表现。',
+  {id:'H11',name:'olofmeister的Carry',yearRange:[2014,2016],desc:'巅峰期的olofmeister没有弱点。步枪、AWP、残局、道具，他站在哪个位置都是世界顶级。Fnatic王朝的每一场胜利背后，都有他的影子。',
     effects:{support:{utility:0.4,mental:4},rifler:{utility:0.3},swedish:{mental:5},bystander:{utility:0.2,mental:3}}},
-  {id:'H12',name:'Xyp9x的Clutch',yearRange:[2018,2019],desc:'关键残局大师。',
+  {id:'H12',name:'Xyp9x的Clutch',yearRange:[2018,2019],desc:'Xyp9x是残局大师。1v2、1v3，在Astralis最需要他的时候他从不缺席。丹麦人用冷静的拆弹与精准的判断告诉你：智性也能杀人。',
     effects:{support:{utility:0.5,gameSense:0.3},topTier:{utility:0.2},bystander:{mental:3}}},
 
   // === 个人巅峰与新星 (H13-H24) ===
-  {id:'H13',name:'Twistzz的突破',yearRange:[2019,2022],desc:'加拿大选手的技术提升。',
+  {id:'H13',name:'Twistzz的突破',yearRange:[2019,2022],desc:'Twistzz的步枪带着一种加拿大式的冷静锋利。惊人的爆头率、迅捷的转点，从Liquid到FaZe，他在每一支顶级队伍里都是最可靠的火力点。',
     effects:{rifler:{aim:0.4,mental:4},northAmerican:{mental:5},bystander:{aim:0.2,mental:3}}},
-  {id:'H14',name:'rain的老将坚守',yearRange:[2016,2023],desc:'挪威选手的职业生涯。',
+  {id:'H14',name:'rain的老将坚守',yearRange:[2016,2023],desc:'rain在FaZe换了无数队友、无数教练，他始终在那里。挪威人的步枪不花哨，却硬得像岩石。老将的坚守，本身就是一种传奇。',
     effects:{rifler:{consistency:0.3,mental:3},norwegian:{mental:4},bystander:{mental:2}}},
-  {id:'H15',name:'NiKo的步枪技术',yearRange:[2017,2023],desc:'波黑天才的枪法。',
+  {id:'H15',name:'NiKo的步枪技术',yearRange:[2017,2023],desc:'NiKo的步枪是艺术。急停、爆头线、转角预瞄，他的枪线精准得像用尺子量过。波黑王子的传说从mousesports开始，一路写进了CS的史册。',
     effects:{rifler:{aim:0.5,mental:5},topTier:{aim:0.2,pressure:2},bystander:{aim:0.3,mental:4}}},
-  {id:'H16',name:'ropz的战术意识',yearRange:[2017,2022],desc:'爱沙尼亚选手的游戏理解。',
+  {id:'H16',name:'ropz的战术意识',yearRange:[2017,2022],desc:'ropz是聪明的杀手。爱沙尼亚人的游戏理解深不见底，他总能找到防守的盲区与进攻的缝隙。从mousesports到FaZe，他靠脑子赢下了一切。',
     effects:{support:{gameSense:0.5,utility:0.3},topTier:{gameSense:0.2},bystander:{gameSense:0.3,mental:3}}},
-  {id:'H17',name:'fox的指挥',yearRange:[2015,2017],desc:'巴西指挥的风格。',
+  {id:'H17',name:'fox的指挥',yearRange:[2015,2017],desc:'fox是巴西CS黄金时代之前的铺路人。在那些还叫不起赞助的岁月里，他的指挥为后来的Luminosity和SK搭好了骨架。',
     effects:{igl:{communication:0.4,gameSense:0.3},brazilian:{mental:5},bystander:{communication:0.2,mental:2}}},
-  {id:'H18',name:'TACO的关键发挥',yearRange:[2016,2017],desc:'巴西选手的大赛表现。',
+  {id:'H18',name:'TACO的关键发挥',yearRange:[2016,2017],desc:'TACO是SK王朝的暗桩。他打最脏的位置、干最苦的活，把光亮都留给FalleN和coldzera。巴西人心里清楚：没有TACO，就没有那两座奖杯。',
     effects:{rifler:{consistency:0.3,mental:4},brazilian:{mental:5},bystander:{mental:3}}},
-  {id:'H19',name:'fer的突破手',yearRange:[2016,2018],desc:'巴西entry fragger。',
+  {id:'H19',name:'fer的突破手',yearRange:[2016,2018],desc:'fer的突破像一把砸开大门的锤子。他冲在最前面，用最凶悍的节奏撕开防线。SK王朝的每次进攻浪潮，都是从他的第一步开始的。',
     effects:{entry:{aim:0.4,mental:4},brazilian:{mental:5},topTier:{aim:0.2},bystander:{mental:3}}},
-  {id:'H20',name:' FalleN的AWP',yearRange:[2015,2017],desc:'巴西AWP传奇。',
+  {id:'H20',name:' FalleN的AWP',yearRange:[2015,2017],desc:'FalleN不只是AWP手，他是巴西CS的教父。教授的狙、他的战术、他的传承，养出了整整一代南美天才。传奇二字，他当之无愧。',
     effects:{awper:{aim:0.4,mental:5},brazilian:{mental:6},igl:{gameSense:0.3},bystander:{mental:4}}},
-  {id:'H21',name:'snappi的指挥',yearRange:[2019,2023],desc:'丹麦指挥的风格。',
+  {id:'H21',name:'snappi的指挥',yearRange:[2019,2023],desc:'snappi是把烂牌打好也把好牌打稳的指挥。丹麦学院的务实在他身上一览无余：没有巨星阵容，也能拧出一支纪律严明的队伍。',
     effects:{igl:{communication:0.4,gameSense:0.3},danish:{mental:4},bystander:{communication:0.2,mental:2}}},
-  {id:'H22',name:'magixx的崛起',yearRange:[2021,2023],desc:'俄罗斯新星。',
+  {id:'H22',name:'magixx的崛起',yearRange:[2021,2023],desc:'magixx从青训一步步走进Spirit首发，稳得不像个年轻人。俄罗斯人用一场场比赛证明：新王朝的地基，是一块砖一块砖砌起来的。',
     effects:{rifler:{aim:0.3,mental:4},cis:{mental:5},young:{mental:6},bystander:{mental:3}}},
-  {id:'H23',name:'chopper的AWP',yearRange:[2021,2023],desc:'俄罗斯AWP选手。',
+  {id:'H23',name:'chopper的AWP',yearRange:[2021,2023],desc:'chopper的AWP是Spirit的后盾。他不声不响，却总在最难熬的回合里站出来。稳，是他给这支年轻队伍最好的礼物。',
     effects:{awper:{aim:0.4,mental:4},cis:{mental:5},bystander:{mental:3}}},
-  {id:'H24',name:'HObbit的突破',yearRange:[2017,2018],desc:'哈萨克斯坦选手。',
+  {id:'H24',name:'HObbit的突破',yearRange:[2017,2018],desc:'HObbit是Gambit奇迹的一环。哈萨克斯坦人的突破，为那支不被看好的独联体杂牌军撕开了一条通往Major冠军的路。',
     effects:{entry:{aim:0.3,mental:4},cis:{mental:5},bystander:{mental:3}}},
 
   // === 选手高光与风格 (H25-H48) ===
-  {id:'H25',name:'GeT_RiGhT的潜伏艺术',yearRange:[2013,2015],desc:'瑞典潜伏大师。',
+  {id:'H25',name:'GeT_RiGhT的潜伏艺术',yearRange:[2013,2015],desc:'GeT_RiGhT把潜伏打成了艺术。全世界都在猜他在哪，然后眼睁睁看着他从背后收割。NiP的87-0神话里，他是那道最诡异的阴影。',
     effects:{lurker:{gameSense:0.4,mental:5},participant:{mental:8},topTier:{gameSense:0.2},bystander:{mental:4}}},
-  {id:'H26',name:'f0rest的步枪稳定性',yearRange:[2013,2016],desc:'瑞典步枪手。',
+  {id:'H26',name:'f0rest的步枪稳定性',yearRange:[2013,2016],desc:'f0rest的步枪稳定得可怕。十年职业生涯，他的手感像从未生锈过。NiP神话的老枪王，优雅了一辈子。',
     effects:{rifler:{consistency:0.5,mental:3},participant:{consistency:0.3},topTier:{consistency:0.2},bystander:{mental:3}}},
-  {id:'H27',name:'JW的疯狂突破',yearRange:[2014,2016],desc:'瑞典entry fragger。',
+  {id:'H27',name:'JW的疯狂突破',yearRange:[2014,2016],desc:'JW的突破就是赌博，但他赢得比谁都多。瑞典疯子的凶悍让所有防守他的队伍头疼。Fnatic王朝的疯子，也是王朝的引擎。',
     effects:{entry:{aim:0.3,mental:4},bystander:{mental:5,aimMotivation:8}}},
-  {id:'H28',name:'flusha的clutch大师',yearRange:[2014,2016],desc:'瑞典残局专家。',
+  {id:'H28',name:'flusha的clutch大师',yearRange:[2014,2016],desc:'flusha的残局带着一种诡异的直觉。那些匪夷所思的拉枪角度、那些绝境中的三杀四杀，让对手怀疑人生。Fnatic王朝的暗面大师。',
     effects:{rifler:{gameSense:0.3},topTier:{mental:5,clutchMotivation:10},bystander:{mental:5}}},
-  {id:'H29',name:'pronax的指挥时代',yearRange:[2014,2015],desc:'Fnatic指挥。',
+  {id:'H29',name:'pronax的指挥时代',yearRange:[2014,2015],desc:'pronax是Fnatic王朝的大脑。他不显山露水，却用一次次战术变化碾碎了所有对手。瑞典王朝的故事，要从他的战术板讲起。',
     effects:{igl:{gameSense:0.4,communication:0.3},topTier:{gameSense:0.2},bystander:{mental:2}}},
-  {id:'H30',name:'Happy的法国指挥',yearRange:[2015,2017],desc:'EnVyUs指挥。',
+  {id:'H30',name:'Happy的法国指挥',yearRange:[2015,2017],desc:'Happy的指挥自由得近乎散漫，却总能掐中对手的咽喉。EnVyUs的Major冠军里，藏着他天马行空的战术想象力。',
     effects:{igl:{communication:0.4,gameSense:0.2},french:{mental:5},topTier:{mental:2},bystander:{mental:2}}},
-  {id:'H31',name:'shox的高光时刻',yearRange:[2014,2017],desc:'法国步枪手。',
+  {id:'H31',name:'shox的高光时刻',yearRange:[2014,2017],desc:'巅峰shox是全能的化身。步枪精准、AWP凶狠、残局冷静，法国人的高光时刻能剪成一部完整的电影。',
     effects:{rifler:{aim:0.3,mental:4},french:{mental:5},bystander:{aimMotivation:10}}},
-  {id:'H32',name:'ScreaM的爆头艺术',yearRange:[2014,2018],desc:'比利时爆头王。',
+  {id:'H32',name:'ScreaM的爆头艺术',yearRange:[2014,2018],desc:'ScreaM只瞄头。比利时人的准星永远停在敌人头部的高度，那些HD爆头剪辑养活了多少集锦频道。他证明了一件事：极致的纯粹，也可以很强大。',
     effects:{rifler:{aim:0.4},bystander:{mental:6,aimMotivation:12},topTier:{mental:2,pressure:1}}},
-  {id:'H33',name:'GuardiaN的AWP统治',yearRange:[2016,2017],desc:'FaZe AWPer。',
+  {id:'H33',name:'GuardiaN的AWP统治',yearRange:[2016,2017],desc:'GuardiaN的AWP曾是NaVi的核武器。斯洛伐克人的狙快、准、狠，2016年的他是世界上最好的狙击手——没有之一。',
     effects:{awper:{aim:0.4,mental:5},participant:{mental:8},topTier:{mental:-2,pressure:2},bystander:{mental:5}}},
-  {id:'H34',name:'olofmeister的道具大师',yearRange:[2014,2016],desc:'Fnatic辅助。',
+  {id:'H34',name:'olofmeister的道具大师',yearRange:[2014,2016],desc:'olofmeister的道具用得像手术刀。一颗雷、一颗闪，永远卡在对手最难受的时机炸开。瑞典全能王，连道具都带着统治力。',
     effects:{support:{utility:0.4},rifler:{utility:0.3},bystander:{utilityMotivation:10}}},
-  {id:'H35',name:'dupreeh的稳定步枪',yearRange:[2014,2020],desc:'Astralis步枪手。',
+  {id:'H35',name:'dupreeh的稳定步枪',yearRange:[2014,2020],desc:'dupreeh是Astralis王朝的先头部队。丹麦人的步枪又稳又狠，solo位的关键局里从不手软。王朝的每一次冲锋，都从他开始。',
     effects:{rifler:{consistency:0.4,mental:3},topTier:{consistency:0.2},bystander:{mental:3}}},
-  {id:'H36',name:'Xyp9x的道具Timing',yearRange:[2018,2019],desc:'Astralis辅助。',
+  {id:'H36',name:'Xyp9x的道具Timing',yearRange:[2018,2019],desc:'Xyp9x的道具像钟表一样准。什么时候扔、扔在哪、配合谁——丹麦王朝的体系里，他是那颗最精确的齿轮。',
     effects:{support:{utility:0.5,gameSense:0.2},topTier:{utility:0.2},bystander:{mental:2}}},
-  {id:'H37',name:'Magisk的团队贡献',yearRange:[2018,2019],desc:'Astralis成员。',
+  {id:'H37',name:'Magisk的团队贡献',yearRange:[2018,2019],desc:'Magisk是Astralis的完美拼图。他不争不抢，却让整个体系严丝合缝。王朝正盛时，每一块基石都值得被记住。',
     effects:{support:{communication:0.3,utility:0.2},participant:{mental:6},topTier:{mental:2}}},
-  {id:'H38',name:'gla1ve的Major王朝指挥',yearRange:[2018,2019],desc:'Astralis IGL。',
+  {id:'H38',name:'gla1ve的Major王朝指挥',yearRange:[2018,2019],desc:'gla1ve是指挥家的巅峰。四座Major、无限可能的战术板，丹麦人把团队竞技推到了CS历史上前所未有的高度。',
     effects:{igl:{gameSense:0.5,communication:0.4},participant:{mental:10,fame:5},topTier:{gameSense:0.2}}},
-  {id:'H39',name:'electroNic的2021巅峰',yearRange:[2021,2021],desc:'NaVi步枪手。',
+  {id:'H39',name:'electroNic的2021巅峰',yearRange:[2021,2021],desc:'2021年的electroNic火力全开。他和s1mple组成的NaVi双枪几乎无懈可击，斯德哥尔摩的完美赛季里有他一半的功劳。',
     effects:{rifler:{aim:0.4,mental:4},participant:{mental:10},topTier:{mental:-2,pressure:3},bystander:{aimMotivation:10}}},
-  {id:'H40',name:'b1t的年轻步枪',yearRange:[2021,2023],desc:'NaVi新星。',
+  {id:'H40',name:'b1t的年轻步枪',yearRange:[2021,2023],desc:'b1t接过了前辈的位置，却打出了超越年龄的稳定性。乌克兰新星的步枪像老将一样可靠——NaVi的后浪来得又快又猛。',
     effects:{young:{mental:6},rifler:{aim:0.3},participant:{mental:6},topTier:{mental:2}}},
-  {id:'H41',name:'Perfecto的辅助艺术',yearRange:[2021,2022],desc:'NaVi辅助。',
+  {id:'H41',name:'Perfecto的辅助艺术',yearRange:[2021,2022],desc:'Perfecto把辅助位打成了艺术品。卡点、拉爆、补枪，NaVi那座完美Major的背后，他是最低调的那块基石。',
     effects:{support:{utility:0.4,communication:0.3},topTier:{utility:0.2},bystander:{mental:2}}},
-  {id:'H42',name:'Boombl4的指挥',yearRange:[2021,2021],desc:'NaVi IGL。',
+  {id:'H42',name:'Boombl4的指挥',yearRange:[2021,2021],desc:'Boombl4在斯德哥尔摩捧起了指挥生涯的顶点。俄罗斯胖虎用一座无懈可击的Major，回应了此前所有的质疑。',
     effects:{igl:{communication:0.4,gameSense:0.3},participant:{mental:8},topTier:{gameSense:0.2}}},
-  {id:'H43',name:'sh1ro的AWP精准',yearRange:[2021,2023],desc:'CIS AWPer。',
+  {id:'H43',name:'sh1ro的AWP精准',yearRange:[2021,2023],desc:'sh1ro的AWP冷静得可怕。俄罗斯年轻人的狙不追求华丽，却几乎从不失误。Spirit的防守体系，因他而立。',
     effects:{awper:{aim:0.4,consistency:0.3},cis:{mental:5},topTier:{mental:2},bystander:{mental:4}}},
-  {id:'H44',name:'Ax1Le的步枪爆发',yearRange:[2021,2022],desc:'CIS步枪手。',
+  {id:'H44',name:'Ax1Le的步枪爆发',yearRange:[2021,2022],desc:'Ax1Le的步枪在CIS赛区横空出世。他和sh1ro组成的中轴线，让Gambit重新回到了世界之巅的讨论里。',
     effects:{rifler:{aim:0.3,mental:3},cis:{mental:4},topTier:{mental:2},bystander:{aimMotivation:8}}},
-  {id:'H45',name:'broky的AWP',yearRange:[2022,2023],desc:'FaZe AWPer。',
+  {id:'H45',name:'broky的AWP',yearRange:[2022,2023],desc:'broky是FaZe夺冠拼图里的最后一块。拉脱维亚人的AWP冷静而致命，安特卫普之夜后，再没有人怀疑他。',
     effects:{awper:{aim:0.3,mental:3},participant:{mental:6},topTier:{mental:2},bystander:{mental:3}}},
-  {id:'H46',name:'Twistzz的步枪技术',yearRange:[2019,2023],desc:'FaZe步枪手。',
+  {id:'H46',name:'Twistzz的步枪技术',yearRange:[2019,2023],desc:'Twistzz的爆头线是教科书级别的。从Liquid到FaZe，加拿大人的枪械艺术在任何一个顶级体系里都成立。',
     effects:{rifler:{aim:0.4,mental:4},northAmerican:{mental:5},bystander:{aimMotivation:10}}},
-  {id:'H47',name:'EliGE的多年一线',yearRange:[2015,2023],desc:'Liquid步枪手。',
+  {id:'H47',name:'EliGE的多年一线',yearRange:[2015,2023],desc:'EliGE在Liquid待了整整八年。美国人的步枪节奏感独一无二，他是北美CS最持久的那面旗帜。',
     effects:{rifler:{aim:0.2,consistency:0.2},northAmerican:{mental:4},topTier:{mental:2}}},
-  {id:'H48',name:'KSCERATO的巴西步枪',yearRange:[2020,2023],desc:'furia步枪手。',
+  {id:'H48',name:'KSCERATO的巴西步枪',yearRange:[2020,2023],desc:'KSCERATO是FURIA的定海神针。巴西人的步枪冷静精准，连续数年稳稳站在TOP20的行列里。',
     effects:{rifler:{aim:0.3,mental:3},brazilian:{mental:5},topTier:{mental:2},bystander:{mental:3}}},
 
   // === 历年Major补充 (H49-H58) ===
-  {id:'H49',name:'2013 DreamHack Winter',yearRange:[2013,2015],desc:'Fnatic首冠。',
+  {id:'H49',name:'2013 DreamHack Winter',yearRange:[2013,2015],desc:'2013年的延雪平，Fnatic捧起了CS:GO时代的第一座Major奖杯。那是新时代的第一声号角，也是一段王朝传奇的起点。',
     effects:{participant:{mental:5},swedish:{mental:4},bystander:{mental:3}}},
-  {id:'H50',name:'2014 Cologne Major',yearRange:[2014,2014],month:7,desc:'NiP夺冠。',
+  {id:'H50',name:'2014 Cologne Major',yearRange:[2014,2014],month:7,desc:'2014年的科隆，NiP在传奇组一路杀进决赛捧杯。87-0的余晖之下，瑞典老牌劲旅证明：神话之后，依然有故事。',
     effects:{participant:{mental:6},swedish:{mental:5},bystander:{mental:3}}},
-  {id:'H51',name:'2015 Cologne Major',yearRange:[2015,2015],month:7,desc:'Fnatic卫冕。',
+  {id:'H51',name:'2015 Cologne Major',yearRange:[2015,2015],month:7,desc:'科隆的看台上挥舞着黄色的旗帜。Fnatic王朝连下两城，巅峰期的瑞典人不可阻挡。',
     effects:{participant:{mental:12,fame:6},topTier:{mental:-2},bystander:{mental:4}}},
-  {id:'H52',name:'2016 Cologne Major',yearRange:[2016,2016],month:7,desc:'SK巴西夺冠。',
+  {id:'H52',name:'2016 Cologne Major',yearRange:[2016,2016],month:7,desc:'科隆之夜属于巴西。SK Gaming在那座教堂之城登顶，coldzera的MVP奖杯在灯光下闪闪发亮。',
     effects:{participant:{mental:14,fame:8},brazilian:{mental:6},topTier:{mental:-3,pressure:3},bystander:{mental:4}}},
-  {id:'H53',name:'2017 Krakow Major',yearRange:[2017,2017],month:7,desc:'Gambit夺冠。',
+  {id:'H53',name:'2017 Krakow Major',yearRange:[2017,2017],month:7,desc:'克拉科夫的奇迹。AdreN和HObbit带领的Gambit杂牌军一路逆袭，Major冠军名单上第一次写下了独联体非豪门的名字。',
     effects:{participant:{mental:12,fame:6},cis:{mental:6},topTier:{mental:-2},bystander:{mental:4}}},
-  {id:'H54',name:'2018 London Major',yearRange:[2018,2018],month:9,desc:'Astralis王朝。',
+  {id:'H54',name:'2018 London Major',yearRange:[2018,2018],month:9,desc:'伦敦。Astralis迈出王朝的第一步，丹麦人的战术纪律让所有对手感到绝望。',
     effects:{participant:{mental:16,fame:10},topTier:{mental:-4,pressure:5},bystander:{mental:3}}},
-  {id:'H55',name:'2019 Katowice Major',yearRange:[2019,2019],month:3,desc:'Astralis连冠。',
+  {id:'H55',name:'2019 Katowice Major',yearRange:[2019,2019],month:3,desc:'卡托维兹万人体育场，Astralis背靠背夺冠。山呼海啸的声浪里，丹麦王朝达到顶峰。',
     effects:{participant:{mental:18,fame:10},topTier:{mental:-5,pressure:6},bystander:{mental:3}}},
-  {id:'H56',name:'2022 Antwerp Major',yearRange:[2022,2022],month:5,desc:'FaZe终夺冠。',
+  {id:'H56',name:'2022 Antwerp Major',yearRange:[2022,2022],month:5,desc:'安特卫普。FaZe银河战舰组建六年终于圆梦，karrigan捧起那座迟来的Major奖杯，全场泪目。',
     effects:{participant:{mental:16,fame:10},topTier:{mental:-3,pressure:4},bystander:{mental:5}}},
-  {id:'H57',name:'2022 Rio Major',yearRange:[2022,2022],month:11,desc:'Outsiders夺冠。',
+  {id:'H57',name:'2022 Rio Major',yearRange:[2022,2022],month:11,desc:'里约的马拉卡纳。没人看好的Outsiders一路黑马到底，Jame的铁血风格为独联体赛区再添一冠。',
     effects:{participant:{mental:14,fame:8},cis:{mental:6},topTier:{mental:-2},bystander:{mental:4}}},
-  {id:'H58',name:'2023 Paris Major',yearRange:[2023,2023],month:5,desc:'Vitality主场夺冠。',
+  {id:'H58',name:'2023 Paris Major',yearRange:[2023,2023],month:5,desc:'巴黎主场，ZywOo圆梦。法国天才在家乡父老的注视下举起奖杯，CS:GO时代的落幕礼完美收场。',
     effects:{participant:{mental:18,fame:12},french:{mental:8},topTier:{mental:-4,pressure:5},bystander:{mental:5}}},
 
   // === 更多选手高光 (H59-H90) ===
-  {id:'H59',name:'NBK-的步枪与指挥',yearRange:[2015,2017],desc:'法国步枪手/指挥。',
+  {id:'H59',name:'NBK-的步枪与指挥',yearRange:[2015,2017],desc:'NBK-是法国CS的常青树。从EnVyUs的Major到G2的重组，他既能扛起步枪，也能接过指挥权。',
     effects:{rifler:{gameSense:0.3,aim:0.2},igl:{gameSense:0.3,aim:0.2},french:{mental:4},bystander:{mental:3}}},
-  {id:'H60',name:'apEX的突破与情绪',yearRange:[2015,2023],desc:'法国突破手。',
+  {id:'H60',name:'apEX的突破与情绪',yearRange:[2015,2023],desc:'apEX的突破永远带着火的温度。法国人用情绪点燃队伍、用疯狂撕开阵线，一直燃烧到巴黎举起奖杯的那一夜。',
     effects:{entry:{aim:0.3,mental:3},french:{mental:4},topTier:{mental:2},bystander:{mental:2}}},
-  {id:'H61',name:'RpK的辅助',yearRange:[2015,2017],desc:'法国辅助选手。',
+  {id:'H61',name:'RpK的辅助',yearRange:[2015,2017],desc:'RpK是法国军团的工兵。老将的道具和卡点朴实无华，却是EnVyUs登顶不可或缺的地基。',
     effects:{support:{utility:0.3,communication:0.2},bystander:{mental:2}}},
-  {id:'H62',name:'SmithZz的AWP',yearRange:[2015,2016],desc:'法国AWP手。',
+  {id:'H62',name:'SmithZz的AWP',yearRange:[2015,2016],desc:'SmithZz的AWP曾是EnVyUs的远程火力点。法国大狙手在那支冠军队伍里，安静地完成了自己的使命。',
     effects:{awper:{aim:0.3},french:{mental:4},bystander:{mental:3}}},
-  {id:'H63',name:'karrigan的指挥生涯',yearRange:[2015,2023],desc:'丹麦传奇指挥。',
+  {id:'H63',name:'karrigan的指挥生涯',yearRange:[2015,2023],desc:'karrigan是指挥界的常青树。从FaZe到mousesports再回FaZe，丹麦老帅用一场场胜利证明：指挥的巅峰可以来得比谁都晚。',
     effects:{igl:{gameSense:0.4,communication:0.3},topTier:{gameSense:0.2},bystander:{mental:2}}},
-  {id:'H64',name:'rain的步枪硬度',yearRange:[2016,2023],desc:'挪威步枪手。',
+  {id:'H64',name:'rain的步枪硬度',yearRange:[2016,2023],desc:'rain的步枪是FaZe的定海神针。挪威人的准星像焊在爆头线上，风雨飘摇的阵容里，他始终是最稳的那块铁。',
     effects:{rifler:{aim:0.3,consistency:0.2},norwegian:{mental:4},topTier:{mental:2},bystander:{mental:2}}},
-  {id:'H65',name:'jks的步枪',yearRange:[2019,2023],desc:'澳洲步枪手。',
+  {id:'H65',name:'jks的步枪',yearRange:[2019,2023],desc:'jks把澳洲CS的旗帜插到了世界之巅。从替补到首发，澳大利亚人用沉默的努力赢得了安特卫普的冠军戒指。',
     effects:{rifler:{aim:0.3},australian:{mental:4},bystander:{mental:3}}},
-  {id:'H66',name:'jkaem的步枪',yearRange:[2016,2020],desc:'挪威步枪手。',
+  {id:'H66',name:'jkaem的步枪',yearRange:[2016,2020],desc:'jkaem是FaZe早期银河战舰的火力点之一。挪威人的步枪简单直接，在那个星光璀璨的年代留下了自己的名字。',
     effects:{rifler:{aim:0.2},norwegian:{mental:3},bystander:{mental:2}}},
-  {id:'H67',name:'allu的AWP',yearRange:[2015,2017],desc:'芬兰AWP手。',
+  {id:'H67',name:'allu的AWP',yearRange:[2015,2017],desc:'allu的AWP带着芬兰人的冷幽默。他不追求高光，却总能把最关键的那一狙稳稳收进口袋。',
     effects:{awper:{aim:0.3,consistency:0.2},finnish:{mental:4},bystander:{mental:3}}},
-  {id:'H68',name:'sergej的步枪爆发',yearRange:[2019,2020],desc:'ENCE新星。',
+  {id:'H68',name:'sergej的步枪爆发',yearRange:[2019,2020],desc:'sergej是ENCE童话里的少年枪王。19岁的芬兰人在卡托维兹的舞台上打出统治级表现，惊艳了整个2019。',
     effects:{rifler:{aim:0.3,mental:3},topTier:{mental:2},bystander:{aimMotivation:8}}},
-  {id:'H69',name:'Aleksib的指挥',yearRange:[2019,2023],desc:'芬兰指挥。',
+  {id:'H69',name:'Aleksib的指挥',yearRange:[2019,2023],desc:'Aleksib是指挥里的学院派。芬兰人的战术细致到每一个投掷物，从ENCE到G2再到NaVi，他的体系走到哪都清晰可辨。',
     effects:{igl:{communication:0.4,gameSense:0.3},finnish:{mental:4},topTier:{gameSense:0.2}}},
-  {id:'H70',name:'Brollan的年轻步枪',yearRange:[2019,2023],desc:'瑞典年轻选手。',
+  {id:'H70',name:'Brollan的年轻步枪',yearRange:[2019,2023],desc:'Brollan是瑞典CS交给新时代的答案。16岁登上舞台，此后每一年的数据都在证明：天才没有辜负期待。',
     effects:{young:{mental:5},rifler:{aim:0.3},swedish:{mental:3},bystander:{mental:3}}},
-  {id:'H71',name:'REZ的步枪',yearRange:[2017,2023],desc:'瑞典步枪手。',
+  {id:'H71',name:'REZ的步枪',yearRange:[2017,2023],desc:'REZ的步枪是NiP新时代的支柱。瑞典人的爆发力，总在大赛的关键时刻准时出现。',
     effects:{rifler:{aim:0.2,consistency:0.2},swedish:{mental:3},bystander:{mental:2}}},
-  {id:'H72',name:'hampus的步枪',yearRange:[2021,2023],desc:'瑞典步枪手。',
+  {id:'H72',name:'hampus的步枪',yearRange:[2021,2023],desc:'hampus在NiP最动荡的岁月里接过指挥权。瑞典年轻人的步枪，和他的担当一样过硬。',
     effects:{rifler:{aim:0.2},swedish:{mental:3},topTier:{mental:1},bystander:{mental:2}}},
-  {id:'H73',name:'Plopski的AWP',yearRange:[2021,2023],desc:'瑞典AWP手。',
+  {id:'H73',name:'Plopski的AWP',yearRange:[2021,2023],desc:'Plopski的AWP是NiP阵中安静的火力点。瑞典人的稳健，让队伍在任何体系里都有退路。',
     effects:{awper:{aim:0.2},swedish:{mental:3},bystander:{mental:2}}},
-  {id:'H74',name:'Lekr0的步枪',yearRange:[2017,2020],desc:'瑞典步枪手。',
+  {id:'H74',name:'Lekr0的步枪',yearRange:[2017,2020],desc:'Lekr0的步枪带着瑞典老派球员的韧性。他陪NiP走过巅峰与低谷，每一场比赛都全力以赴。',
     effects:{rifler:{aim:0.2,utility:0.2},swedish:{mental:3},bystander:{mental:2}}},
-  {id:'H75',name:'Golden的步枪',yearRange:[2018,2019],desc:'瑞典步枪手。',
+  {id:'H75',name:'Golden的步枪',yearRange:[2018,2019],desc:'Golden在Fnatic的重建期扛起了队伍。瑞典人的指挥和步枪一样值得信赖。',
     effects:{rifler:{aim:0.2},swedish:{mental:3},bystander:{mental:2}}},
-  {id:'H76',name:'KRIMZ的多年稳定',yearRange:[2014,2023],desc:'Fnatic老将。',
+  {id:'H76',name:'KRIMZ的多年稳定',yearRange:[2014,2023],desc:'KRIMZ是CS历史上最长的稳定器之一。从2013年的首冠到十年后的赛场，Fnatic的黄色战袍换了一批又一批人，他还在。',
     effects:{rifler:{consistency:0.3,utility:0.2},support:{consistency:0.3,utility:0.2},swedish:{mental:4},topTier:{mental:2}}},
-  {id:'H77',name:'Snax的步枪与指挥',yearRange:[2014,2018],desc:'波兰选手。',
+  {id:'H77',name:'Snax的步枪与指挥',yearRange:[2014,2018],desc:'Snax是Virtus.pro黄金五人组的万金油。波兰胖子的步枪、残局、指挥样样拿得出手，那种天才般的游戏直觉让人怀念。',
     effects:{rifler:{aim:0.2,gameSense:0.3},igl:{aim:0.2,gameSense:0.3},polish:{mental:4},bystander:{mental:3}}},
-  {id:'H78',name:'TaZ的辅助',yearRange:[2014,2016],desc:'波兰辅助选手。',
+  {id:'H78',name:'TaZ的辅助',yearRange:[2014,2016],desc:'TaZ是波兰军团的斗志源泉。老将的道具、卡点，和那颗永远不服输的心，撑起了VP最辉煌的岁月。',
     effects:{support:{utility:0.3,communication:0.2},polish:{mental:3},bystander:{mental:2}}},
-  {id:'H79',name:'pashaBiceps的人气',yearRange:[2014,2017],desc:'波兰人气选手。',
+  {id:'H79',name:'pashaBiceps的人气',yearRange:[2014,2017],desc:'pasha是CS圈最有人情味的面孔。他边撸铁边和观众唠嗑，波兰人的乐观感染了整个社区。',
     effects:{polish:{mental:5},topTier:{mental:2},bystander:{mental:6,fame:1}}},
-  {id:'H80',name:'byali的步枪',yearRange:[2015,2017],desc:'波兰步枪手。',
+  {id:'H80',name:'byali的步枪',yearRange:[2015,2017],desc:'byali的步枪是VP黄金一代的锋刃之一。波兰人在大赛里的爆发力，让所有强队不敢轻敌。',
     effects:{rifler:{aim:0.2},polish:{mental:3},bystander:{mental:2}}},
-  {id:'H81',name:'NEO的步枪',yearRange:[2014,2016],desc:'波兰步枪手。',
+  {id:'H81',name:'NEO的步枪',yearRange:[2014,2016],desc:'NEO是波兰CS的图腾。从1.6时代一路打到GO，传奇的枪线跨越了两个游戏版本。',
     effects:{rifler:{aim:0.2,consistency:0.2},polish:{mental:3},bystander:{mental:2}}},
-  {id:'H82',name:'AdreN的指挥',yearRange:[2016,2017],desc:'CIS指挥。',
+  {id:'H82',name:'AdreN的指挥',yearRange:[2016,2017],desc:'AdreN是Gambit奇迹的操盘手之一。哈萨克斯坦老将在危机中接手指挥，几个月后就把奖杯举过了头顶。',
     effects:{igl:{gameSense:0.3,communication:0.3},cis:{mental:4},bystander:{mental:2}}},
-  {id:'H83',name:'Hobbit的步枪',yearRange:[2017,2018],desc:'CIS步枪手。',
+  {id:'H83',name:'Hobbit的步枪',yearRange:[2017,2018],desc:'HObbit是Gambit杂牌军的火力核心。哈萨克斯坦人的步枪，在那段童话般的岁月里从未掉过线。',
     effects:{rifler:{aim:0.3},cis:{mental:3},bystander:{mental:2}}},
-  {id:'H84',name:'Jame的AWP与指挥',yearRange:[2020,2023],desc:'CIS AWP/指挥。',
+  {id:'H84',name:'Jame的AWP与指挥',yearRange:[2020,2023],desc:'Jame把保守打成了体系。AWP、指挥、经济管理三位一体，里约之夜，他为铁血风格正名。',
     effects:{awper:{aim:0.3,gameSense:0.3},igl:{aim:0.3,gameSense:0.3},cis:{mental:4},topTier:{mental:2}}},
-  {id:'H85',name:'FL1T的步枪',yearRange:[2021,2023],desc:'CIS步枪手。',
+  {id:'H85',name:'FL1T的步枪',yearRange:[2021,2023],desc:'FL1T的步枪是Outsiders黑马的引擎之一。从Vega Squadron到里约冠军，独联体年轻人的成长肉眼可见。',
     effects:{rifler:{aim:0.3},cis:{mental:3},bystander:{mental:2}}},
-  {id:'H86',name:'fame的步枪',yearRange:[2021,2022],desc:'CIS步枪手。',
+  {id:'H86',name:'fame的步枪',yearRange:[2021,2022],desc:'fame在Virtus.pro的阵容里稳步成长。独联体步枪手的未来，正在一场场比赛里变得清晰。',
     effects:{rifler:{aim:0.2},cis:{mental:3},bystander:{mental:2}}},
-  {id:'H87',name:'Qikert的辅助',yearRange:[2021,2022],desc:'CIS辅助选手。',
+  {id:'H87',name:'Qikert的辅助',yearRange:[2021,2022],desc:'Qikert是Outsiders体系里的润滑剂。独联体辅助选手的默默付出，在里约之夜换来了最好的回报。',
     effects:{support:{utility:0.3},cis:{mental:2},bystander:{mental:2}}},
-  {id:'H88',name:'XANTARES的步枪',yearRange:[2018,2023],desc:'土耳其步枪手。',
+  {id:'H88',name:'XANTARES的步枪',yearRange:[2018,2023],desc:'XANTARES的爆头线低得离谱。土耳其人的peek快到剪辑软件都跟不上，BIG的进攻体系曾因他而锋利。',
     effects:{rifler:{aim:0.4,mental:3},turkish:{mental:5},bystander:{aimMotivation:10}}},
-  {id:'H89',name:'woxic的AWP',yearRange:[2019,2023],desc:'土耳其AWP手。',
+  {id:'H89',name:'woxic的AWP',yearRange:[2019,2023],desc:'woxic的AWP是土耳其的弹道艺术。他的狙快、凶、野，巅峰期的他在任何地图上都是焦点。',
     effects:{awper:{aim:0.3},turkish:{mental:4},bystander:{mental:3}}},
-  {id:'H90',name:'Calyx的步枪',yearRange:[2021,2023],desc:'土耳其步枪手。',
+  {id:'H90',name:'Calyx的步枪',yearRange:[2021,2023],desc:'Calyx的步枪是土耳其CS新一代的代表。年轻人的爆发力，让Eternal Fire的旗帜越举越高。',
     effects:{rifler:{aim:0.2},turkish:{mental:3},bystander:{mental:2}}},
 
   // === 更多Major与时刻 (H91-H98) ===
-  {id:'H91',name:'2015 Cluj-Napoca Major',yearRange:[2015,2015],month:10,desc:'EnVyUs夺冠。',
+  {id:'H91',name:'2015 Cluj-Napoca Major',yearRange:[2015,2015],month:10,desc:'克卢日-纳波卡。EnVyUs在Happy的指挥下爆冷夺冠，法国CS的黄金一代迎来最高光的夜晚。',
     effects:{participant:{mental:12,fame:6},french:{mental:5},topTier:{mental:-2},bystander:{mental:3}}},
-  {id:'H92',name:'2016 Columbus Major',yearRange:[2016,2016],month:4,desc:'LG/SK巴西夺冠。',
+  {id:'H92',name:'2016 Columbus Major',yearRange:[2016,2016],month:4,desc:'哥伦布。Luminosity成为第一支夺冠的巴西队伍，几个月后他们更名为SK Gaming——王朝的两种写法，同一个故事。',
     effects:{participant:{mental:14,fame:8},brazilian:{mental:6},topTier:{mental:-2},bystander:{mental:4}}},
-  {id:'H93',name:'2017 Atlanta Major',yearRange:[2017,2017],month:4,desc:'Astralis夺冠。',
+  {id:'H93',name:'2017 Atlanta Major',yearRange:[2017,2017],month:4,desc:'亚特兰大。Astralis在王朝前夜先下一城，gla1ve的体系开始显露獠牙。',
     effects:{participant:{mental:12,fame:6},topTier:{mental:-2,pressure:2},bystander:{mental:3}}},
-  {id:'H94',name:'2018 ELEAGUE Major',yearRange:[2018,2018],month:1,desc:'Cloud9北美首冠。',
+  {id:'H94',name:'2018 ELEAGUE Major',yearRange:[2018,2018],month:1,desc:'波士顿。Cloud9在主场上演惊天逆转，成为第一支夺得Major的北美队伍。tarik的残局至今仍在集锦里循环播放。',
     effects:{participant:{mental:18,fame:12},northAmerican:{mental:8},topTier:{mental:-3},bystander:{mental:4}}},
-  {id:'H95',name:'2020线上赛时代',yearRange:[2020,2020],month:3,desc:'疫情下的线上赛事。',
+  {id:'H95',name:'2020线上赛时代',yearRange:[2020,2020],month:3,desc:'疫情把整个行业搬到了线上。没有观众、没有旅行、没有LAN的喧嚣——但比赛还在继续。CS在这段日子里，学会了新的生存方式。',
     effects:{topTier:{mental:-2},bystander:{mental:2},all:{fatigueRecovery:5}}},
-  {id:'H96',name:'2023 BLAST World Final',yearRange:[2023,2023],month:12,desc:'年终总决赛。',
+  {id:'H96',name:'2023 BLAST World Final',yearRange:[2023,2023],month:12,desc:'2023年的年终总决赛，年度最佳们最后的碰撞。一个时代的尾声，总要用一场盛宴来告别。',
     effects:{participant:{mental:10,fame:5},topTier:{mental:3},bystander:{mental:2}}},
-  {id:'H97',name:'2024 IEM Katowice',yearRange:[2024,2024],month:2,desc:'卡托维兹站。',
+  {id:'H97',name:'2024 IEM Katowice',yearRange:[2024,2024],month:2,desc:'卡托维兹的Spodek场馆永远声浪震天。2024年的这里，新旧势力交替，CS2时代的竞争格局初见雏形。',
     effects:{participant:{mental:10,fame:5},topTier:{mental:-2,pressure:3},bystander:{mental:3}}},
-  {id:'H98',name:'2025 BLAST相关',yearRange:[2025,2025],month:6,desc:'BLAST赛事。',
+  {id:'H98',name:'2025 BLAST相关',yearRange:[2025,2025],month:6,desc:'2025年，BLAST的赛事版图持续扩张。CS的全球化竞赛跑进了下一个十年，历史仍在被书写。',
     effects:{participant:{mental:8,fame:4},topTier:{mental:3},bystander:{mental:2}}},
 
   // === 选手退役事件 (RET01-RET20) ===
@@ -2523,23 +2626,23 @@ const HISTORICAL_EVENTS = [
     effects:{rifler:{mental:2},topTier:{mental:2},bystander:{mental:2}}},
 
   // === 新增历史事件 (H85-H107) ===
-  {id:'H85',name:'Cloud9 Boston奇迹',yearRange:[2018,2018],desc:'2018年1月，波士顿。Cloud9在决赛中逆转FaZe Clan，成为第一支赢得Major的北美队伍。tarik的残局、Stewie2K的突破、Skadoodle的AWP……北美CS终于登上了世界之巅。那一刻，整个波士顿都在欢呼。',
+  {id:'H201',name:'Cloud9 Boston奇迹',yearRange:[2018,2018],desc:'2018年1月，波士顿。Cloud9在决赛中逆转FaZe Clan，成为第一支赢得Major的北美队伍。tarik的残局、Stewie2K的突破、Skadoodle的AWP……北美CS终于登上了世界之巅。那一刻，整个波士顿都在欢呼。',
     effects:{participant:{mental:15,fame:8},northAmerican:{mental:8},topTier:{mental:-3,pressure:4},bystander:{mental:5}}},
-  {id:'H86',name:'NaVi Stockholm统治',yearRange:[2021,2021],desc:'2021年斯德哥尔摩。s1mple带领的NaVi没有输掉一张地图，完美统治了整个Major。电子哥的步枪、Perfecto的道具、Boombl4的指挥……这是CS历史上最完美的Major表现之一。',
+  {id:'H202',name:'NaVi Stockholm统治',yearRange:[2021,2021],desc:'2021年斯德哥尔摩。s1mple带领的NaVi没有输掉一张地图，完美统治了整个Major。电子哥的步枪、Perfecto的道具、Boombl4的指挥……这是CS历史上最完美的Major表现之一。',
     effects:{participant:{mental:18,fame:10},topTier:{mental:-4,pressure:5},bystander:{mental:6}}},
-  {id:'H87',name:'Outsiders Rio黑马',yearRange:[2022,2022],desc:'2022年里约。没有人看好Outsiders，但Jame和他的队友们一路杀进决赛，击败Heroic夺冠。这是CS历史上最大的黑马之一，证明了任何队伍都有机会创造奇迹。',
+  {id:'H203',name:'Outsiders Rio黑马',yearRange:[2022,2022],desc:'2022年里约。没有人看好Outsiders，但Jame和他的队友们一路杀进决赛，击败Heroic夺冠。这是CS历史上最大的黑马之一，证明了任何队伍都有机会创造奇迹。',
     effects:{participant:{mental:16,fame:7},cis:{mental:8},topTier:{mental:-3,pressure:3},bystander:{mental:5}}},
-  {id:'H88',name:'Vitality巴黎主场',yearRange:[2023,2023],desc:'2023年巴黎。ZywOo在主场球迷的欢呼声中举起了Major奖杯。这是CS:GO时代的最后一座Major，法国人用最完美的方式告别了这个时代。',
+  {id:'H204',name:'Vitality巴黎主场',yearRange:[2023,2023],desc:'2023年巴黎。ZywOo在主场球迷的欢呼声中举起了Major奖杯。这是CS:GO时代的最后一座Major，法国人用最完美的方式告别了这个时代。',
     effects:{participant:{mental:20,fame:12},french:{mental:10},topTier:{mental:-4,pressure:4},bystander:{mental:6}}},
-  {id:'H89',name:'Liquid百日王朝',yearRange:[2019,2019],desc:'2019年，Team Liquid创造了CS历史上最长的连胜纪录。Twistzz、NAF、EliGE、Stewie2K、nitr0……他们统治了整个夏天，让所有对手都感到绝望。百日王朝，北美CS的巅峰。',
+  {id:'H205',name:'Liquid百日王朝',yearRange:[2019,2019],desc:'2019年，Team Liquid创造了CS历史上最长的连胜纪录。Twistzz、NAF、EliGE、Stewie2K、nitr0……他们统治了整个夏天，让所有对手都感到绝望。百日王朝，北美CS的巅峰。',
     effects:{participant:{mental:14,fame:8},northAmerican:{mental:6},topTier:{mental:-3,pressure:4},bystander:{mental:5}}},
-  {id:'H92',name:'NiKo步枪艺术',yearRange:[2017,2024],desc:'NiKo是这个时代最伟大的步枪手之一。他的枪法华丽、精准、致命。从mousesports到FaZe再到G2，他的每一次转会都是头条新闻。波斯王子的传说。',
+  {id:'H206',name:'NiKo步枪艺术',yearRange:[2017,2024],desc:'NiKo是这个时代最伟大的步枪手之一。他的枪法华丽、精准、致命。从mousesports到FaZe再到G2，他的每一次转会都是头条新闻。波斯王子的传说。',
     effects:{rifler:{aim:0.4,mental:5},topTier:{aim:0.2,pressure:2},bystander:{aim:0.3,mental:4}}},
-  {id:'H93',name:'m0NESY天才',yearRange:[2022,2024],desc:'17岁的m0NESY加入G2，所有人都知道：又一个天才诞生了。他的AWP精准、冷静、致命。他是ZywOo和s1mple之后的第三极。',
+  {id:'H207',name:'m0NESY天才',yearRange:[2022,2024],desc:'17岁的m0NESY加入G2，所有人都知道：又一个天才诞生了。他的AWP精准、冷静、致命。他是ZywOo和s1mple之后的第三极。',
     effects:{awper:{aim:0.5,mental:4},young:{mental:8},topTier:{mental:-2,pressure:3},bystander:{mental:5}}},
-  {id:'H96',name:'s1mple的1v4',yearRange:[2018,2018],desc:'无甲P250，1v4。s1mple用一把手枪完成了不可能的残局。这一幕被无数次重放，成为CS历史上最传奇的时刻之一。乌克兰人的天才，在这一刻展现得淋漓尽致。',
+  {id:'H208',name:'s1mple的1v4',yearRange:[2018,2018],desc:'无甲P250，1v4。s1mple用一把手枪完成了不可能的残局。这一幕被无数次重放，成为CS历史上最传奇的时刻之一。乌克兰人的天才，在这一刻展现得淋漓尽致。',
     effects:{awper:{aim:0.6,mental:8},participant:{mental:10},topTier:{mental:-3,pressure:4},bystander:{mental:6}}},
-  {id:'H98',name:'coldzera跳跃击杀',yearRange:[2016,2016],desc:'MLG Columbus 2016，coldzera的跳跃AWP击杀成为了CS历史上最著名的画面之一。他在空中完成了两杀，帮助Luminosity夺冠。巴西人的魔法时刻。',
+  {id:'H209',name:'coldzera跳跃击杀',yearRange:[2016,2016],desc:'MLG Columbus 2016，coldzera的跳跃AWP击杀成为了CS历史上最著名的画面之一。他在空中完成了两杀，帮助Luminosity夺冠。巴西人的魔法时刻。',
     effects:{rifler:{aim:0.5,mental:6},brazilian:{mental:8},topTier:{aim:0.2},bystander:{mental:5}}},
   {id:'H99',name:'CS:GO到CS2',yearRange:[2023,2024],desc:'2023年9月，CS2正式发布。一个时代结束了，一个新时代开始了。所有人都在适应新的游戏，新的机制，新的可能性。CS的历史翻开了新的一页。',
     effects:{participant:{mental:5},topTier:{mental:-2,pressure:3},bystander:{mental:4}}},
@@ -2574,7 +2677,9 @@ function isHistoricalParticipant(event){
     'H87':'virtus pro','H88':'space soldiers|windsongo','H89':'space soldiers|windsongo',
     'H90':'space soldiers|windsongo',
     'H91':'envyus','H92':'sk|luminosity','H93':'astralis','H94':'cloud9',
-    'H96':'blast','H97':'iem','H98':'blast'
+    'H96':'blast','H97':'iem','H98':'blast',
+    'H201':'cloud9','H202':'navi|natus vincere','H203':'outsiders|spirit','H204':'vitality','H205':'liquid',
+    'H206':'faze|g2|mousesports','H207':'g2','H208':'navi|natus vincere','H209':'sk|luminosity'
   };
   const related=participantMap[event.id];
   if(!related)return false;
@@ -2614,7 +2719,7 @@ function processHistoricalEvents(){
     let status='bystander';
     if(isHistoricalParticipant(evt)){
       status='participant';
-    }else if(G.careerLevel==='topTier'){
+    }else if(G.team&&G.team.tier==='topTier'){
       status='topTier';
     }
 
@@ -2718,63 +2823,63 @@ function processHistoricalEvents(){
 // 主角打破历史记录时触发，禁用对应原历史事件
 
 const REWRITE_EVENTS = [
-  {id:'W01',name:'柏林之王',desc:'在2019 Berlin Major击败Astralis夺冠！',
+  {id:'W01',name:'柏林之王',desc:'你在柏林的决赛里掀翻了不可一世的Astralis。丹麦王朝的裂缝，是你亲手凿开的。',
     condition:g=>g.year===2019&&g._majorWins?.includes('berlin2019')&&g._beatAstralis,
     achievement:'柏林之王',disabledEvent:'H10',
     effects:{fame:10,mental:15,pressure:5}},
-  {id:'W02',name:'年度第一人',desc:'取代s1mple成为年度TOP1！',
+  {id:'W02',name:'年度第一人',desc:'你把s1mple从年度TOP1的王座上请了下来。从这一天起，全世界都在重新认识你的名字。',
     condition:g=>g._top20Rank===1&&(g.year>=2018&&g.year<=2023),
     achievement:'年度第一人',disabledEvent:null,
     effects:{fame:12,mental:18}},
-  {id:'W03',name:'卡托维兹传奇',desc:'在2019 Katowice Major击败Astralis夺冠！',
+  {id:'W03',name:'卡托维兹传奇',desc:'卡托维兹的灯光下，Astralis的王朝在你面前画上了句号。',
     condition:g=>g.year===2019&&g._majorWins?.includes('katowice2019')&&g._beatAstralis,
     achievement:'卡托维兹传奇',disabledEvent:'H55',
     effects:{fame:10,mental:15,pressure:5}},
-  {id:'W04',name:'王朝终结者',desc:'在2018-2019年间打破Astralis王朝！',
+  {id:'W04',name:'王朝终结者',desc:'2018到2019，你让丹麦统治变成了一个历史名词。',
     condition:g=>g.year>=2018&&g.year<=2019&&g._majorWins?.some(m=>['london2018','berlin2019','katowice2019'].includes(m))&&g._beatAstralis,
     achievement:'王朝终结者',disabledEvent:'H03',
     effects:{fame:15,mental:20,pressure:5}},
-  {id:'W05',name:'伦敦之夜',desc:'在2018 London Major击败Astralis夺冠！',
+  {id:'W05',name:'伦敦之夜',desc:'伦敦Major的决赛舞台，你亲手击碎了Astralis的卫冕梦。',
     condition:g=>g.year===2018&&g._majorWins?.includes('london2018')&&g._beatAstralis,
     achievement:'伦敦之夜',disabledEvent:'H54',
     effects:{fame:10,mental:15,pressure:5}},
-  {id:'W06',name:'斯德哥尔摩英雄',desc:'在2021 Stockholm Major决赛击败NaVi夺冠！',
+  {id:'W06',name:'斯德哥尔摩英雄',desc:'斯德哥尔摩的决赛，你面对的是史上最完美的NaVi——然后你赢了。',
     condition:g=>g.year===2021&&g._majorWins?.includes('stockholm2021')&&g._beatNaVi,
     achievement:'斯德哥尔摩英雄',disabledEvent:'H39',
     effects:{fame:10,mental:15,pressure:5}},
-  {id:'W07',name:'巴黎之巅',desc:'在2023 Paris Major击败Vitality夺冠！',
+  {id:'W07',name:'巴黎之巅',desc:'巴黎主场山呼海啸的声浪里，你从Vitality手中抢走了CS:GO时代最后一座Major。',
     condition:g=>g.year===2023&&g._majorWins?.includes('paris2023')&&g._beatVitality,
     achievement:'巴黎之巅',disabledEvent:'H58',
     effects:{fame:10,mental:15,pressure:5}},
-  {id:'W08',name:'上海传奇',desc:'在2024上海Major击败Spirit夺冠！',
+  {id:'W08',name:'上海传奇',desc:'上海Major决赛，你掀翻了如日中天的Team Spirit。别人王朝的加冕礼，被你搅成了你的独角戏。',
     condition:g=>g.year===2024&&g._majorWins?.includes('shanghai2024')&&g._beatSpirit,
     achievement:'上海传奇',disabledEvent:null,
     effects:{fame:10,mental:15,pressure:5}},
-  {id:'W09',name:'新世代领跑',desc:'同年Rating超越ZywOo并获得TOP5！',
+  {id:'W09',name:'新世代领跑',desc:'你的Rating超过了ZywOo，年度TOP5里第一次刻上了你的名字。新世代的领跑者，是你。',
     condition:g=>g._beatZywOo&&g._top20Rank<=5,
     achievement:'新世代领跑',disabledEvent:null,
     effects:{fame:8,mental:12}},
-  {id:'W10',name:'巅峰对决',desc:'2024年Rating超越donk并获得TOP3！',
+  {id:'W10',name:'巅峰对决',desc:'2024年本该属于donk，却被你按在了身下。年度TOP3的领奖台上，站着的是你。',
     condition:g=>g.year===2024&&g._beatDonk&&g._top20Rank<=3,
     achievement:'巅峰对决',disabledEvent:null,
     effects:{fame:10,mental:15}},
-  {id:'W11',name:'安特卫普之星',desc:'在2022 Antwerp Major击败FaZe夺冠！',
+  {id:'W11',name:'安特卫普之星',desc:'安特卫普的决赛之夜，FaZe的银河战舰在你面前熄了火。',
     condition:g=>g.year===2022&&g._majorWins?.includes('antwerp2022')&&g._beatFaZe,
     achievement:'安特卫普之星',disabledEvent:'H56',
     effects:{fame:10,mental:15,pressure:5}},
-  {id:'W12',name:'里约英雄',desc:'在2022 Rio Major击败Outsiders夺冠！',
+  {id:'W12',name:'里约英雄',desc:'里约的故事本该属于Outsiders——你把剧本改成了自己的名字。',
     condition:g=>g.year===2022&&g._majorWins?.includes('rio2022')&&g._beatOutsiders,
     achievement:'里约英雄',disabledEvent:'H57',
     effects:{fame:10,mental:15,pressure:5}},
-  {id:'W13',name:'波士顿奇迹',desc:'在2018 Boston Major夺冠（非Cloud9）！',
+  {id:'W13',name:'波士顿奇迹',desc:'波士顿的逆转之夜，主角不是Cloud9。是你。',
     condition:g=>g.year===2018&&g._majorWins?.includes('boston2018')&&!g._isCloud9,
     achievement:'波士顿奇迹',disabledEvent:'H94',
     effects:{fame:12,mental:18}},
-  {id:'W14',name:'科隆传奇',desc:'在2016 Cologne Major击败SK夺冠！',
+  {id:'W14',name:'科隆传奇',desc:'科隆的决赛里你掀翻了SK。coldzera的王朝，没能走出这座城市。',
     condition:g=>g.year===2016&&g._majorWins?.includes('cologne2016')&&g._beatSK,
     achievement:'科隆传奇',disabledEvent:'H52',
     effects:{fame:10,mental:15,pressure:5}},
-  {id:'W15',name:'王朝奠基',desc:'连续两届Major夺冠！',
+  {id:'W15',name:'王朝奠基',desc:'两座Major背靠背。从这一刻起，人们谈论王朝时，说的不再是别人——是你。',
     condition:g=>g._consecutiveMajorWins>=2,
     achievement:'王朝奠基',disabledEvent:null,
     effects:{fame:20,mental:25}}
@@ -2878,6 +2983,18 @@ function closeEventPopup(){
     G._eventPopupCallback = null;
     cb();
   }
+}
+
+function showPendingAchievementsThen(next){
+  const ids=(G._pendingAchPopups=G._pendingAchPopups||[]).splice(0);
+  if(!ids.length){next();return}
+  let idx=0;
+  const showNextId=()=>{
+    if(idx>=ids.length){G._eventPopupCallback=null;next();return}
+    G._eventPopupCallback=showNextId;
+    showAchievementPopup(ids[idx++]);
+  };
+  showNextId();
 }
 
 function showEventPopupsSequentially(eventList, onAllClosed){
@@ -3022,11 +3139,10 @@ function showAchievementPopup(achievementId) {
   if (!ach) return;
   
   if (!G.unlockedAchievements) G.unlockedAchievements = [];
-  if (G.unlockedAchievements.includes(achievementId)) return;
+  if (!G.unlockedAchievements.includes(achievementId)) G.unlockedAchievements.push(achievementId);
   
-  G.unlockedAchievements.push(achievementId);
   if (!G.career.achievements) G.career.achievements = [];
-  G.career.achievements.push(ach.name);
+  if (!G.career.achievements.includes(ach.name)) G.career.achievements.push(ach.name);
   
   const html = `
     <div style="text-align:center;padding:20px">
@@ -3035,7 +3151,7 @@ function showAchievementPopup(achievementId) {
       <div class="event-text" style="text-align:left;white-space:pre-line;font-size:14px;line-height:1.8;color:var(--text2)">${ach.popup}</div>
     </div>
     <div class="modal-buttons">
-      <button class="btn-primary" onclick="closeModal()">继续</button>
+      <button class="btn-primary" onclick="closeEventPopup()">继续</button>
     </div>
   `;
   showModal(html);
@@ -3044,6 +3160,11 @@ function showAchievementPopup(achievementId) {
 function checkAchievement(achievementId) {
   if (!G.unlockedAchievements) G.unlockedAchievements = [];
   if (G.unlockedAchievements.includes(achievementId)) return false;
+  if (G._advanceActive){
+    G.unlockedAchievements.push(achievementId);
+    (G._pendingAchPopups=G._pendingAchPopups||[]).push(achievementId);
+    return true;
+  }
   showAchievementPopup(achievementId);
   return true;
 }
@@ -3055,7 +3176,7 @@ let G = null; // game state
 
 function newGameState() {
   return {
-    version: '1.0',
+    version: '1.1',
     player: {
       name:'', ign:'', nationality:'', age:18, role:'Rifler',
       attrs:{aim:68,gameSense:52,utility:55,communication:50,consistency:38,mental:42,physical:50},
@@ -3093,22 +3214,28 @@ function newGameState() {
     pendingNegotiation:null, // {offer, demands}
     career:{
       totalMatches:0, wins:0, losses:0,
+      totalMaps:0, ratingSum:0,
       avgRating:0, ratingHistory:[],
       bestRating:0,
       achievements:[],
       matchLog:[],
       monthlyLog:[]
     },
-    training:{selected:'aim',hours:8,intensity:'moderate'}, // intensity: 'high', 'moderate', 'light'
+    training:{selected:'aim',hours:8,intensity:'moderate'}, // intensity: 'high', 'moderate', 'light', 'rest'
     life:{rest:6,entertainment:3,fitness:2,training:8}, // training synced from intensity
+    // 月度赛历与玩家计划：每个月只生成一次，报名与预算随存档持久化
+    monthSchedule:null,
+    monthPlan:{trainingIntensity:'moderate',restDays:6,entertainment:3,fitness:2,streamingCap:0,mapStrategy:'auto',bans:[],picks:[]},
     streaming:{followers:0,avgViewers:0,totalDonations:0,monthlyIncome:0,active:false,attraction:0,matchCount:0},
     eventLog:[],
     tournamentResults:[],
+    majorWins:[], // 实际夺冠的 Major 届次 key，如 berlin2019
+    beatAstralis:false, // 是否在 Major 决赛实际击败 Astralis
     _triggeredHistoricalEvents:[],
     _disabledHistoricalEvents:[],
     rewrittenHistory:{},
     _eventCooldowns:{},
-    qualifiedEvents:[], // Events player has qualified for via qualifiers
+    qualifiedEvents:[], // {eventName,eventYear,eventMonth,teamId} 绑定具体战队与届次
     retired:false,
     // Multi-run inheritance
     inheritedAchievements:[],
@@ -3175,7 +3302,7 @@ function getPlayerSkill(){
 // New power system: calculate match power for a single match
 // Design: amateur avg = 30, TOP1 = 97-100+ (can exceed 100 on good days)
 // Uses multiplicative modifiers with small ranges
-function calculateMatchPower(attrs, role, matchStage, matchesThisMonth, form, fatigue, isPlayoff, isFinal){
+function calculateMatchPower(attrs, role, matchStage, matchesThisMonth, form, fatigue, isPlayoff, isFinal, mapOverride, mapBonusOverride){
   const cw=CORE_WEIGHTS[role]||CORE_WEIGHTS.Rifler;
   const baseAbility=attrs.aim*cw.aim+attrs.utility*cw.utility+attrs.communication*cw.communication+attrs.gameSense*cw.gameSense;
   const consistencyBonus=1+(attrs.consistency/100)*0.05;
@@ -3199,9 +3326,9 @@ function calculateMatchPower(attrs, role, matchStage, matchesThisMonth, form, fa
   // Fatigue multiplier: no penalty below 30, increasing penalty above
   // ≤30 → 1.00, 50 → 0.90, 70 → 0.80, 100 → 0.65
   const fatigueFactor=1-Math.max(0,(fatigue-30)/200);
-  // Map bonus from map proficiency system
-  const currentMap=getRandomMap();
-  const mapBonus=getMapBonus(currentMap);
+  // Map bonus from map proficiency system (override keeps veto/result maps consistent)
+  const currentMap=mapOverride||getRandomMap();
+  const mapBonus=mapBonusOverride!==undefined?mapBonusOverride:getMapBonus(currentMap);
   const finalPower=baseAbility*consistencyBonus*stateFactor*mentalFactor*formFactor*fatigueFactor*(1+mapBonus);
   return finalPower;
 }
@@ -3212,23 +3339,8 @@ function getMonthlyStamina(physical){
   const bonusPhysical=teamBonus.physical||0;
   return 30+(physical+bonusPhysical)*1.5;
 }
-function getMatchStaminaCost(matchType,mapsPlayed){
-  const perMap={ladder:1.0,tier2:1.5,tier1:2.0,superElite:2.2,major:2.5};
-  return(perMap[matchType]||1.0)*mapsPlayed;
-}
-function tryConsumeStamina(amount){
-  if(G.stamina>=amount){
-    G.stamina-=amount;
-    G.staminaConsumed+=amount;
-    return 0;
-  }
-  const overdraft=amount-G.stamina;
-  G.staminaConsumed+=G.stamina+overdraft;
-  G.stamina=0;
-  const extraFatigue=Math.ceil(overdraft/2);
-  G.player.fatigue=Math.min(100,G.player.fatigue+extraFatigue);
-  return extraFatigue;
-}
+// 体能系统（简化版）：月度体力只用于训练；比赛与直播都不消耗体力，
+// 疲劳由赛事疲劳（finishEvent）、训练疲劳与月末剩余体力统一结算。
 function addEventFatigue(eventType){
   const eventFatigueMap={
     tier2_event:2,tier1_event:2,superElite_event:2,major:2,heavy_ladder_month:2,
@@ -3248,54 +3360,38 @@ function initMonthlyStamina(){
 }
 function processEndOfMonthStamina(){
   const logs=[];
-  // Check heavy training
   if(G.monthTrainingHours>=40){
     addEventFatigue('heavy_training_month');
     logs.push('高强度训练月（≥40小时），疲劳+8');
   }
-  // Check dense schedule (≥2 tier1 events in one month)
   if(G.monthTournamentCount>=2){
     addEventFatigue('dense_schedule');
     logs.push('赛程密集（同月≥2场一线赛），疲劳+8');
   }
-  // Leftover stamina → auto ladder matches
-  const leftover=Math.max(0,Math.floor(G.stamina));
+  // 月末剩余体力按统一规则恢复疲劳（不再自动打天梯）
+  const leftover=Math.max(0,G.stamina);
   if(leftover>0){
-    let autoWins=0;let autoTotal=0;let autoRatingSum=0;
-    for(let i=0;i<leftover;i++){
-      const oppSkill=rand(25,55);
-      const r=simulateMatch(oppSkill,false,null,'ladder');
-      autoTotal++;
-      if(r.win)autoWins++;
-      autoRatingSum+=r.rating;
-    }
-    if(autoTotal>0){
-      logs.push(`月末自动天梯：${autoTotal}场，${autoWins}胜${autoTotal-autoWins}负，均分Rating ${(autoRatingSum/autoTotal).toFixed(2)}`);
-    }
-    // Check heavy ladder month (≥15 games)
-    const totalMonthMatches=autoTotal+(G.career.totalMatches-(G._preMonthMatches||0));
-    if(totalMonthMatches>=15){
-      addEventFatigue('heavy_ladder_month');
-      logs.push('天梯密集月（≥15场），疲劳+2');
+    const recovery=Math.floor(leftover/RECOVERY_PARAMS.surplusPer);
+    if(recovery>0){
+      const before=G.player.fatigue;
+      G.player.fatigue=Math.max(0,G.player.fatigue-recovery);
+      logs.push(`剩余体力 ${Math.round(leftover)} 转化为疲劳恢复 -${(before-G.player.fatigue).toFixed(0)}`);
+    }else{
+      logs.push(`剩余体力 ${Math.round(leftover)}（不足 ${RECOVERY_PARAMS.surplusPer} 点，未触发疲劳恢复）`);
     }
     G.stamina=0;
+  }else{
+    logs.push('月末无剩余体力可用于恢复');
   }
-  // Record pending fatigue recovery for next month
-  G.pendingFatigueRecovery=G.player.attrs.physical*0.1;
+  // 简化：透支报告与“实际高于预估”警告已随透支机制一起移除
+  G._staminaOverdraft=[];
+  G.pendingFatigueRecovery=0; // 跨月待恢复机制已移除，月末一次性结算
   return logs;
 }
 function processPendingFatigueRecovery(){
-  const logs=[];
-  if(G.pendingFatigueRecovery>0){
-    const before=G.player.fatigue;
-    G.player.fatigue=Math.max(0,G.player.fatigue-G.pendingFatigueRecovery);
-    const recovered=before-G.player.fatigue;
-    if(recovered>0.1){
-      logs.push(`疲劳恢复：-${recovered.toFixed(1)}（体能×0.1）`);
-    }
-    G.pendingFatigueRecovery=0;
-  }
-  return logs;
+  // 简化：跨月待恢复已移除，统一由月末剩余体力与训练结算处理
+  G.pendingFatigueRecovery=0;
+  return [];
 }
 
 // ============================================================
@@ -3637,7 +3733,7 @@ function showGameOver(type){
   let html=`<h2>🏁 职业生涯结束</h2>`;
   html+=`<div class="card"><p style="text-align:center;font-size:16px;margin:20px 0">${typeText}</p></div>`;
   html+=`<div class="card"><h3>📊 生涯统计</h3>`;
-  html+=`<div class="stat-row"><span class="stat-label">职业生涯</span><span class="stat-value">${G.year-2015} 年</span></div>`;
+  html+=`<div class="stat-row"><span class="stat-label">职业生涯</span><span class="stat-value">${Math.floor(G.career.monthlyLog.length/12)} 年</span></div>`;
   html+=`<div class="stat-row"><span class="stat-label">总比赛</span><span class="stat-value">${G.career.totalMatches} 场</span></div>`;
   html+=`<div class="stat-row"><span class="stat-label">胜率</span><span class="stat-value">${G.career.totalMatches>0?Math.round(G.career.wins/G.career.totalMatches*100):0}%</span></div>`;
   html+=`<div class="stat-row"><span class="stat-label">平均Rating</span><span class="stat-value">${G.career.avgRating.toFixed(2)}</span></div>`;
@@ -3659,7 +3755,7 @@ function startNewRun(){
   const inheritedHonors={...G.honors};
   const runNumber=(G.runNumber||1)+1;
   // Reset game
-  initGame();
+  G=newGameState();
   // Apply inheritance
   G.inheritedAchievements=inheritedAchievements;
   G.inheritedHonors=inheritedHonors;
@@ -3667,22 +3763,38 @@ function startNewRun(){
   // Fame bonus from top 20 appearances
   G.fame=Math.min(20,inheritedHonors.top20.length*5);
   closeModal();
+  showScreen('creation-screen');
   showToast(`新周目 #${runNumber} 开始！`,'success');
 }
 
 function returnToTitle(){
   closeModal();
-  showScreen('title-screen');
+  showScreen('home-screen');
 }
 
-// Calculate opponent power - uses team roster if available, otherwise simplified
-function calculateOpponentPower(opponentSkill, matchStage, teamRoster){
+// Calculate opponent per-player power on a specific map
+function calculateOpponentPower(opponentSkill, matchStage, teamRoster, map){
+  const mapName=map||getRandomMap();
+  let ability=opponentSkill;
+  let oppName='';
   if(teamRoster&&teamRoster.players&&teamRoster.players.length>=5){
-    return calcOpponentPowerFromRoster(teamRoster, matchStage);
+    oppName=teamRoster.name||'';
+    ability=teamRoster.players.reduce((s,p)=>s+calcPlayerAbility(p),0)/teamRoster.players.length;
   }
-  // Simulate opponent as having balanced attributes based on skill level
-  const attrs={aim:opponentSkill,utility:opponentSkill,communication:opponentSkill,gameSense:opponentSkill,consistency:60,mental:50,physical:60};
-  return calculateMatchPower(attrs,'Rifler',matchStage,6,50,20);
+  const mapBonus=oppName?getOpponentMapBonus(oppName,mapName):getMapBonus(mapName);
+  let mentalBase;
+  const tierMental=MENTAL_BASE_BY_TIER[matchStage];
+  if(tierMental)mentalBase=tierMental.group;
+  else mentalBase=MENTAL_BASE[matchStage]||MENTAL_BASE.amateur;
+  const mentalFactor=1+(50-mentalBase)/100*0.10;
+  return ability*mentalFactor*(1+mapBonus)*(0.98+Math.random()*0.04);
+}
+// 玩家有效属性：受伤时枪法按 aimPenalty 扣除（比赛模拟与展示口径一致）
+function getPlayerEffectiveAttrs(){
+  const attrs={...G.player.attrs};
+  const pen=getInjuryAimPenalty();
+  if(pen)attrs.aim=Math.max(10,Math.round(attrs.aim-pen));
+  return attrs;
 }
 function getPlayerRating(){
   if(!G)return 0;
@@ -3690,7 +3802,7 @@ function getPlayerRating(){
   const p=G.player;
   const matchStage=G.team?.tier||(G.careerLevel==='amateur'?'amateur':'tier2');
   const matchesThisMonth=G.careerLevel==='amateur'?4:G.careerLevel==='semiPro'?6:8;
-  const power=calculateMatchPower(p.attrs,p.role,matchStage,matchesThisMonth,p.form,p.fatigue);
+  const power=calculateMatchPower(getPlayerEffectiveAttrs(),p.role,matchStage,matchesThisMonth,p.form,p.fatigue);
   // Convert power to rating scale (power ~30-100+, rating ~0.6-1.5+)
   return power/100;
 }
@@ -3723,67 +3835,141 @@ function switchTab(tab){
 // ============================================================
 // PLAYER CREATION
 // ============================================================
-let creationPoints = 10;
-let creationAttrs = {aim:68,gameSense:52,utility:55,communication:50,consistency:38,mental:42,physical:50};
+let creationAttrs = {aim:63,gameSense:52,utility:55,communication:50,consistency:38,mental:42,physical:50};
+let creationPhysicalCap = 85;
+
+function getCreationAge(){
+  const el=document.getElementById('c-age');
+  return el?parseInt(el.value):18;
+}
+// 体能由年龄与天赋（physicalCap 80-90）决定，不参与可分配预算；18-30 岁开档即处于平台水平
+function getCreationPhysicalValue(age,cap){
+  return Math.round(cap*getPhysicalAgeCoeff(age));
+}
+function onCreationAgeChange(){
+  creationAttrs.physical=getCreationPhysicalValue(getCreationAge(),creationPhysicalCap);
+  renderAttrAlloc();
+}
+function creationAllocated(){return CREATE_ATTRS.reduce((s,a)=>s+creationAttrs[a],0)}
+function creationRemaining(){return CREATE_BUDGET-creationAllocated()}
 
 function initCreationScreen(){
-  creationPoints=10;
-  creationAttrs={aim:68,gameSense:52,utility:55,communication:50,consistency:38,mental:42,physical:50};
+  creationPhysicalCap=rand(80,90);
+  creationAttrs={aim:63,gameSense:52,utility:55,communication:50,consistency:38,mental:42,physical:0};
+  creationAttrs.physical=getCreationPhysicalValue(getCreationAge(),creationPhysicalCap);
   renderAttrAlloc();
 }
 
 function renderAttrAlloc(){
   const c=document.getElementById('attr-alloc-container');
-  c.innerHTML=ATTRS.map(a=>`
+  if(!c)return;
+  c.innerHTML=CREATE_ATTRS.map(a=>`
     <div class="attr-alloc">
       <span class="attr-name">${ATTR_SHORT[a]}</span>
       <button onclick="adjustAttr('${a}',-1)">-</button>
       <span class="attr-val" id="ca-${a}">${creationAttrs[a]}</span>
       <button onclick="adjustAttr('${a}',1)">+</button>
-      <span class="attr-potential" id="cap-${a}"></span>
+      <span class="attr-potential">${CREATE_MIN}–${CREATE_MAX}</span>
     </div>
-  `).join('');
-  document.getElementById('c-points').textContent=creationPoints;
+  `).join('')+`
+    <div class="attr-alloc" style="opacity:.85">
+      <span class="attr-name">体能</span>
+      <span class="attr-val" style="width:auto">${creationAttrs.physical}</span>
+      <span class="attr-potential">由年龄与天赋决定（天赋上限 ${creationPhysicalCap}，只读）</span>
+    </div>
+  `;
+  document.getElementById('c-points').textContent=creationRemaining();
+  document.getElementById('c-allocated').textContent=creationAllocated();
 }
 
 function adjustAttr(attr,delta){
-  if(delta>0&&creationPoints<=0)return;
-  if(delta<0&&creationAttrs[attr]<=20)return;
-  creationAttrs[attr]+=delta;
-  creationPoints-=delta;
+  if(!CREATE_ATTRS.includes(attr))return;
+  const next=creationAttrs[attr]+delta;
+  if(next<CREATE_MIN||next>CREATE_MAX)return;
+  if(delta>0&&creationRemaining()<=0)return;
+  creationAttrs[attr]=next;
   renderAttrAlloc();
 }
 
 function randomizeAttrs(){
-  const base={aim:45,gameSense:40,utility:35,communication:40,consistency:38,mental:42,physical:50};
-  let pts=10;
-  const keys=ATTRS.slice();
-  while(pts>0){
-    const k=keys[rand(0,keys.length-1)];
-    const add=Math.min(pts,rand(1,3));
-    base[k]+=add;
-    pts-=add;
+  // 与手动分配使用完全相同的预算与范围
+  const vals={};
+  CREATE_ATTRS.forEach(a=>vals[a]=CREATE_MIN);
+  let remaining=CREATE_BUDGET-CREATE_MIN*CREATE_ATTRS.length;
+  while(remaining>0){
+    const open=CREATE_ATTRS.filter(a=>vals[a]<CREATE_MAX);
+    if(!open.length)break;
+    const k=open[rand(0,open.length-1)];
+    const add=Math.min(remaining,rand(1,6),CREATE_MAX-vals[k]);
+    vals[k]+=add;
+    remaining-=add;
   }
-  creationAttrs=base;
-  creationPoints=0;
+  creationAttrs={...vals,physical:getCreationPhysicalValue(getCreationAge(),creationPhysicalCap)};
   renderAttrAlloc();
+}
+
+// ============================================================
+// 随机姓名/ID 生成（捏人界面的「随机姓名和ID」按钮）
+// ============================================================
+const RANDOM_NAME_POOLS={
+  '中国':{s:['李','王','张','刘','陈','杨','黄','周','吴','徐','孙','马','朱','胡','郭','林','罗','郑','梁','谢'],g:['浩然','志强','子轩','俊杰','雨泽','一鸣','宇航','天佑','文博','志远','晨曦','磊','轩','慕辰','皓','彦','曦','睿','思远','铭']},
+  '日本':{s:['佐藤','铃木','高桥','渡边','伊藤','山本','中村','小林','林','小川'],g:['晴人','陆','空','大和','莲','海斗','健二','隆之','悠斗','翔太']},
+  '韩国':{s:['金','李','朴','崔','郑','姜','赵','允','张','林'],g:['敏镐','志浩','书俊','道允','弦雨','志勋','成真','永坤','泰民','宇镇']},
+  '瑞典':{f:['Anton','Emil','Erling','Filip','Jonas','Kasper','Linus','Mikkel','Nikolaj','Oscar','Simon','Tobias','Viktor','Axel','Rasmus'],l:['Andersson','Berg','Eriksson','Lund','Nielsen','Hansen','Johansson','Larsen','Nilsson','Olsen','Petersen','Sandberg']},
+  '丹麦':{f:['Mathias','Frederik','Emil','Mikkel','Anders','Lukas','Oliver','Magnus','Sebastian','Kristian','Casper','Bjorn'],l:['Nielsen','Hansen','Andersen','Pedersen','Jensen','Kristensen','Larsen','Mikkelsen','Holm','Dahl']},
+  '巴西':{f:['Gabriel','Lucas','Matheus','Rafael','Vinicius','Caio','Diego','Felipe','João','Pedro','Bruno','Thiago'],l:['Silva','Santos','Oliveira','Souza','Costa','Ferreira','Almeida','Pereira','Rodrigues','Martins']},
+  '俄罗斯':{f:['Anton','Artem','Dimitri','Ivan','Maksim','Nikita','Oleg','Pavel','Sergei','Vlad','Andrei','Kirill','Egor','Timofey'],l:['Ivanov','Petrov','Smirnov','Volkov','Sokolov','Kuznetsov','Nikitin','Morozov','Aleksandrov','Romanov']},
+  '乌克兰':{f:['Oleksandr','Andriy','Serhiy','Danylo','Mykola','Bohdan','Taras','Ihor','Vadym','Yuriy'],l:['Shevchenko','Tkachenko','Bondarenko','Melnyk','Kravchenko','Kovalenko','Ponomarenko','Savchenko','Moroz','Lysenko']},
+  '法国':{f:['Amaury','Cédric','Damien','Émile','Fabien','Hugo','Julien','Lucas','Mathis','Rémi','Théo','Valentin'],l:['Bernard','Dupont','Lefèvre','Moreau','Petit','Girard','Lambert','Rousseau','Fournier','Mercier']},
+  '德国':{f:['Alexander','Christoph','Daniel','Felix','Jonas','Kai','Leon','Moritz','Nico','Simon','Till','Tim'],l:['Müller','Schmidt','Weber','Wagner','Becker','Hoffmann','Krüger','Schäfer','Koch','Werner']},
+  '波兰':{f:['Adam','Bartek','Dawid','Filip','Jakub','Kamil','Marek','Michał','Piotr','Szymon','Tomek','Wojtek'],l:['Kowalski','Nowak','Wiśniewski','Kamiński','Lewandowski','Zieliński','Szymański','Dąbrowski','Wozniak','Mazur']},
+  'default':{f:['Josh','Ryan','Ethan','Tyler','Austin','Brandon','Chase','Garrett','Dominic','Nathan','Spencer','Blake','Liam','Noah','Owen','Callum','Jake','Ben','Sam','Mitch','Duncan','Shane'],l:['Smith','Johnson','Brown','Davis','Wilson','Moore','Taylor','Anderson','Walker','Harrison','Mitchell','Thompson','Cooper','Bennett','Hughes','Foster']}/*美国/加拿大/澳大利亚及兜底*/
+};
+function randPick(arr){return arr[Math.floor(Math.random()*arr.length)];}
+function generateRandomIgn(){
+  const frags=['Kaze','Nova','Vex','Blade','Storm','Frost','Drift','Apex','Viper','Ghost','Titan','Rogue','Echo','Pulse','Havoc','Zephyr','Chrono','Astra','Volt','Saber','Rift','Onyx','Jinx','Flux','Slate','Warp','Zen','Rush','Cinder','Dusk','Ember','Pyre','Quake','Arrow','Fang','Rune','Wisp','Mist','Hydra','Kilo','Nero'];
+  const styles=[
+    ()=>randPick(frags)+String(Math.floor(Math.random()*99)+1),
+    ()=>randPick(frags)+'_'+randPick(frags),
+    ()=>randPick(frags)+'z',
+    ()=>('x'+randPick(frags)),
+    ()=>randPick(frags)+randPick(frags),
+    ()=>randPick(frags)+'-'+String(Math.floor(Math.random()*9)+1)
+  ];
+  return randPick(styles)().slice(0,16);
+}
+function randomizeIdentity(){
+  const nat=(document.getElementById('c-nat')||{value:''}).value;
+  const pool=RANDOM_NAME_POOLS[nat]||RANDOM_NAME_POOLS['default'];
+  let name;
+  if(pool.s&&pool.g){name=randPick(pool.s)+randPick(pool.g);}
+  else{name=randPick(pool.f)+' '+randPick(pool.l);}
+  document.getElementById('c-name').value=name;
+  document.getElementById('c-ign').value=generateRandomIgn();
+  showToast('已随机生成姓名和ID，可继续修改','info');
 }
 
 function startGame(){
   const name=document.getElementById('c-name').value.trim();
   const ign=document.getElementById('c-ign').value.trim();
   if(!name||!ign){showToast('请填写姓名和游戏ID','error');return}
+  if(creationRemaining()!==0){showToast('请分配完所有属性点','error');return}
+  if(CREATE_ATTRS.some(a=>creationAttrs[a]<CREATE_MIN||creationAttrs[a]>CREATE_MAX)){
+    showToast('属性超出开局范围','error');return;
+  }
   G=newGameState();
   G.player.name=name;
   G.player.ign=ign;
   G.player.nationality=document.getElementById('c-nat').value;
-  G.player.age=parseInt(document.getElementById('c-age').value);
+  G.player.age=getCreationAge();
   G.player.role=document.getElementById('c-role').value;
   G.year=parseInt(document.getElementById('c-year').value);
-  G.player.attrs={...creationAttrs};
+  // 使用创建页展示的体能与天赋上限，不再二次随机
+  G.player.physicalCap=creationPhysicalCap;
+  G.player.attrs={...creationAttrs,physical:getCreationPhysicalValue(G.player.age,creationPhysicalCap)};
   G.player.potential={};
   ATTRS.forEach(a=>{
-    let pot=creationAttrs[a]+rand(10,30);
+    let pot=a==='physical'?creationPhysicalCap:creationAttrs[a]+rand(10,30);
     pot=clamp(pot,creationAttrs[a]+5,95);
     G.player.potential[a]=pot;
   });
@@ -3799,10 +3985,8 @@ function startGame(){
     G.player.fourDimCaps[dim]=caps[i];
   });
   G.player.hasHitCapBefore=false;
-  // Initialize physical cap (80-90) and initial physical based on age
-  G.player.physicalCap=rand(80,90);
-  const ageCoeff=getPhysicalAgeCoeff(G.player.age);
-  G.player.attrs.physical=Math.round(G.player.physicalCap*ageCoeff*0.85);
+  initMonthlyStamina();
+  ensureMonthSchedule();
   G.eventLog.push({text:`${name}（ID: ${ign}）开始了CS职业生涯。`,type:'neutral',month:G.month,year:G.year});
   G.career.monthlyLog.push(`${G.year}年${G.month}月 - 职业生涯开始`);
   showScreen('game-screen');
@@ -3823,6 +4007,8 @@ function getHoursByIntensity(intensity){
 }
 function setTrainingIntensity(intensity){
   G.training.intensity=intensity;
+  if(G.monthPlan)G.monthPlan.trainingIntensity=intensity;
+  persistGame(true);
   renderTab('training');
 }
 
@@ -3892,7 +4078,7 @@ function processTraining(){
   // Calculate fatigue change
   const surplusAfter=G.stamina;
   const recoveryFromSurplus=Math.floor(surplusAfter/RECOVERY_PARAMS.surplusPer);
-  const baseRecovery=Math.floor(p.physical*RECOVERY_PARAMS.baseRate);
+  const baseRecovery=Math.floor((p.attrs?p.attrs.physical:p.physical)*RECOVERY_PARAMS.baseRate);
   const fatigueChange=t.fatigue-recoveryFromSurplus-baseRecovery;
   p.fatigue=clamp(p.fatigue+fatigueChange,0,100);
   
@@ -3924,234 +4110,500 @@ function oneClickTrain(){
   G.training.selected=sorted[0];
   G.training.hours=8;
   G.training.intensity='moderate';
+  if(G.monthPlan)G.monthPlan.trainingIntensity='moderate';
   p.fatigue=clamp(p.fatigue-5,0,100);
   p.mentalState=clamp(p.mentalState+3,0,100);
   showToast(`训练计划已设置：${ATTR_SHORT[sorted[0]]}、${ATTR_SHORT[sorted[1]]}、${ATTR_SHORT[sorted[2]]}`,'success');
 }
 
 // ============================================================
-// MATCH SIMULATION
+// TEAM LINEUP / MAP VETO / SERIES ENGINE
 // ============================================================
-function simulateMatch(opponentSkill, isTournament, tournamentTier, matchType, isPlayoff, isFinal, teamRoster){
+function getPlayerEntryForLineup(){
   const p=G.player;
-  matchType=matchType||(tournamentTier==='major'?'major':tournamentTier==='superElite'?'superElite':tournamentTier==='tier1'?'tier1':tournamentTier==='tier2'?'tier2':'ladder');
-  // Determine match stage for mental base
-  const matchStage=tournamentTier||G.team?.tier||getDefaultMatchStage();
-  // Estimate matches this month (will be refined in generateMonthlyMatches)
-  const matchesThisMonth=G.careerLevel==='amateur'?4:G.careerLevel==='semiPro'?6:8;
-  // Calculate player power using new system
-  let myPower=calculateMatchPower(p.attrs,p.role,matchStage,matchesThisMonth,p.form,p.fatigue,isPlayoff,isFinal);
-  // "Beyond limits" event: 0.1% chance per match if has hit cap before
-  let beyondLimitsTriggered=false;
-  let beyondLimitsAttr=null;
-  if(p.hasHitCapBefore&&Math.random()<0.001){
-    // Find a bottleneck attribute (at cap)
-    const fourDims=['aim','utility','communication','gameSense'];
-    const bottleneckAttrs=fourDims.filter(a=>p.attrs[a]>=(p.fourDimCaps?.[a]||p.potential[a]));
-    if(bottleneckAttrs.length>0){
-      beyondLimitsAttr=bottleneckAttrs[rand(0,bottleneckAttrs.length-1)];
-      beyondLimitsTriggered=true;
-      // Boost power by 1.5x for this match (applied to the attribute's contribution)
-      myPower*=1.5;
-      // Permanently raise cap by 5
-      if(!p.fourDimCaps)p.fourDimCaps={aim:0,utility:0,communication:0,gameSense:0};
-      p.fourDimCaps[beyondLimitsAttr]=(p.fourDimCaps[beyondLimitsAttr]||p.potential[beyondLimitsAttr])+5;
-    }
-  }
-  // Team bonus from chemistry
-  const teamBonus=G.team?G.teamChemistry/100*0.05:0;
-  const myEffective=myPower*(1+teamBonus);
-  // Calculate opponent power (use team roster if available for IGL multiplier)
-  const oppPower=calculateOpponentPower(opponentSkill,matchStage,teamRoster);
-  const oppEffective=oppPower*(1+randf(-0.03,0.03));
-  // Win probability based on power comparison
-  const winProb=myEffective/(myEffective+oppEffective);
-  const win=Math.random()<winProb;
-  const myRounds=win?rand(13,16):rand(4,12);
-  const oppRounds=30-myRounds;
-  // Consume stamina for this map (1 map per simulateMatch call)
-  const staminaCost=getMatchStaminaCost(matchType,1);
-  const overdraftFatigue=tryConsumeStamina(staminaCost);
-  // Rating = power difference (NO clamping per spec)
-  const ratingDiff=(myEffective-oppEffective)/100;
-  let matchRating=1.0+ratingDiff+randf(-0.08,0.08);
-  // Mental base by tournament tier and stage
-  let mentalBase;
-  const tierMental=MENTAL_BASE_BY_TIER[tournamentTier];
-  if(tierMental){
-    if(isFinal)mentalBase=tierMental.final;
-    else if(isPlayoff)mentalBase=tierMental.playoff;
-    else mentalBase=tierMental.group;
-  } else {
-    // Fallback to old system for non-tournament matches
-    mentalBase=MENTAL_BASE[matchStage]||MENTAL_BASE.amateur;
-    if(isFinal)mentalBase+=20;
-    else if(isPlayoff)mentalBase+=10;
-  }
-  // Update mental attribute: move toward base by 0.1 per match (scaled by age)
-  if(p.attrs.mental<mentalBase){
-    p.attrs.mental=Math.min(p.attrs.mental+0.1*mentalAgeCoeff(p.age),mentalBase);
-  }
-  // Also apply the existing mental gain formula (for larger gains, scaled by age)
-  const mentalGain=Math.max(0,((mentalBase+20)-p.attrs.mental)/20)*mentalAgeCoeff(p.age);
-  p.attrs.mental=Math.min(p.potential.mental,p.attrs.mental+mentalGain);
-  // Stats scale with match rating
-  const kills=clamp(Math.round(matchRating*rand(12,16)+(win?2:0)),4,30);
-  const deaths=clamp(Math.round((2.2-matchRating)*rand(10,15)),4,22);
-  const assists=rand(2,7);
-  const adr=clamp(Math.round(matchRating*rand(50,65)+rand(5,10)),25,120);
-  const kast=clamp(Math.round(matchRating*rand(30,35)+rand(20,28)),40,95);
-  const openingKills=win?rand(1,3):rand(0,2);
-  const clutch=matchRating>1.1&&win?rand(0,2):0;
   return {
-    date:`${G.year}.${G.month}`,
-    opponent:teamRoster?teamRoster.name:getTeamName(opponentSkill),
-    isTournament,
-    tournamentTier:tournamentTier||null,
-    matchType,
-    isPlayoff:isPlayoff||false,
-    isFinal:isFinal||false,
-    win,
-    score:`${myRounds}:${oppRounds}`,
-    kills,deaths,assists,adr,kast,
-    openingKills,clutch,
-    rating:parseFloat(matchRating.toFixed(2)),
-    kd:deaths>0?(kills/deaths).toFixed(2):kills.toFixed(2),
-    staminaCost,
-    overdraftFatigue,
-    beyondLimits:beyondLimitsTriggered?{attr:beyondLimitsAttr,newCap:p.fourDimCaps[beyondLimitsAttr]}:null
+    id:'player',name:p.ign||p.name||'你',role:p.role||'Rifler',
+    aim:Math.max(10,Math.round(p.attrs.aim-getInjuryAimPenalty())),utility:p.attrs.utility,communication:p.attrs.communication,
+    gameSense:p.attrs.gameSense,consistency:p.attrs.consistency,mental:p.attrs.mental,
+    isPlayer:true
   };
 }
 
+function getFallbackPlayer(role,tier){
+  const base={topTier:88,tier1:78,tier2:64,tier3:50,amateur:38,ladder:38}[tier]||55;
+  const v=()=>clamp(Math.round(base+rand(-8,8)),20,99);
+  return {name:`队友${rand(10,99)}`,role:role||'Rifler',aim:v(),utility:v(),communication:v(),gameSense:v(),consistency:v(),mental:v(),isPlayer:false};
+}
+
+function getTeamBaseRoster(){
+  if(!G.team)return [];
+  let players=[];
+  if(Array.isArray(G.team.roster)&&G.team.roster.length>0){
+    players=G.team.roster.filter(p=>!p.isPlayer).map(p=>({...p,isPlayer:false}));
+  }
+  if(players.length<4){
+    const hit=findRosterByName(G.team.name,G.year);
+    if(hit&&hit.players)players=hit.players.filter(p=>!p.isPlayer).map(p=>({...p,isPlayer:false}));
+  }
+  const tier=G.team.tier||'tier2';
+  while(players.length<4){
+    players.push(getFallbackPlayer(['Rifler','AWPer','Support','IGL'][players.length%4],tier));
+  }
+  return players.slice(0,4);
+}
+
+function getMyLineupForMatch(includePlayer){
+  if(!G.team)return null;
+  const lineup=getTeamBaseRoster().slice(0,4);
+  if(includePlayer){
+    const entry=getPlayerEntryForLineup();
+    const sameRole=lineup.findIndex(p=>p.role===entry.role);
+    if(sameRole>=0)lineup[sameRole]=entry;
+    else lineup.push(entry);
+  }else{
+    lineup.push(getFallbackPlayer(G.player.role||'Rifler',G.team.tier));
+  }
+  while(lineup.length<5)lineup.push(getFallbackPlayer('Rifler',G.team.tier));
+  return lineup.slice(0,5);
+}
+
+function getLineupStrength(lineup,applyChemistry){
+  if(!lineup||lineup.length!==5)return 0;
+  let s=calcTeamStrength(lineup);
+  if(applyChemistry&&G.team)s*=0.95+(G.teamChemistry||50)/100*0.10;
+  return s;
+}
+
+function hashString(text){
+  let h=2166136261;
+  const str=String(text||'');
+  for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619);}
+  return h>>>0;
+}
+
+function getOpponentMapProfile(oppName){
+  const name=oppName||'对手';
+  const h=hashString(name);
+  const profile={};
+  MAPS.forEach((m,i)=>{profile[m]=40+((h>>>(i*3))%41);});
+  const strong=MAPS[h%MAPS.length];
+  const weak=MAPS[(h>>>3)%MAPS.length];
+  profile[strong]=Math.max(profile[strong],86);
+  if(weak!==strong)profile[weak]=Math.min(profile[weak],32);
+  return profile;
+}
+function getOpponentMapBonus(oppName,map){
+  const profile=getOpponentMapProfile(oppName);
+  return ((profile[map]!==undefined?profile[map]:50)-50)/200;
+}
+function getMapEdge(map,opponentName){
+  const profile=getOpponentMapProfile(opponentName);
+  return ((G.mapProficiency[map]||50)-(profile[map]||50))/200;
+}
+
+function getSeriesMapCount(format){
+  return format==='BO5'?5:format==='BO1'?1:3;
+}
+function getSeriesNeeded(format){
+  return format==='BO5'?3:format==='BO1'?1:2;
+}
+function buildSeriesMaps(format,opponentName){
+  const needed=getSeriesMapCount(format);
+  const maxBans=Math.max(0,MAPS.length-needed);
+  const oppProfile=getOpponentMapProfile(opponentName);
+  const prof=m=>G.mapProficiency[m]||50;
+  const edge=m=>(prof(m)-oppProfile[m])/200;
+  const bans=new Set();
+  const addBan=m=>{if(m&&MAPS.includes(m)&&!bans.has(m)&&bans.size<maxBans)bans.add(m);};
+  const strategy=(G.monthPlan&&G.monthPlan.mapStrategy)||'auto';
+  const manualBans=((G.monthPlan&&G.monthPlan.bans)||[]).filter(m=>MAPS.includes(m));
+  if(strategy==='manual'){
+    manualBans.slice(0,2).forEach(addBan);
+  }else if(strategy==='ban_strong'){
+    [...MAPS].sort((a,b)=>oppProfile[b]-oppProfile[a]).slice(0,2).forEach(addBan);
+  }else{
+    [...MAPS].sort((a,b)=>prof(a)-prof(b)).slice(0,1).forEach(addBan);
+  }
+  [...MAPS].sort((a,b)=>prof(b)-prof(a)).forEach(m=>{
+    if(!manualBans.includes(m))addBan(m);
+  });
+  let pool=MAPS.filter(m=>!bans.has(m));
+  if(pool.length<needed)pool=MAPS.slice(0,needed);
+  const picks=((G.monthPlan&&G.monthPlan.picks)||[]).filter(m=>pool.includes(m)&&!bans.has(m));
+  const result=[];
+  picks.forEach(m=>{if(result.length<needed&&!result.includes(m))result.push(m);});
+  while(result.length<needed){
+    const remaining=pool.filter(m=>!result.includes(m));
+    if(remaining.length===0)break;
+    if(remaining.length===1||needed-result.length===1){
+      const decider=[...remaining].sort((a,b)=>Math.abs(edge(a))-Math.abs(edge(b)))[0];
+      result.push(decider);
+    }else if(result.length%2===0){
+      result.push([...remaining].sort((a,b)=>edge(b)-edge(a))[0]);
+    }else{
+      result.push([...remaining].sort((a,b)=>edge(a)-edge(b))[0]);
+    }
+  }
+  return {maps:result.slice(0,needed),bans:[...bans],opponentProfile:oppProfile,strategy};
+}
+function getMapAdvantageLabel(edge){
+  if(edge>0.12)return{text:'优势',color:'var(--green)'};
+  if(edge>0.03)return{text:'小优',color:'var(--green)'};
+  if(edge<-0.12)return{text:'劣势',color:'var(--red)'};
+  if(edge<-0.03)return{text:'小劣',color:'var(--yellow)'};
+  return{text:'均势',color:'var(--text2)'};
+}
+
+function makeMapScore(myWin){
+  const ot=Math.random()<0.25?rand(0,1):0;
+  const winner=16+ot*3;
+  const loser=12+ot*3+rand(0,2);
+  return myWin?`${winner}:${loser}`:`${loser}:${winner}`;
+}
+function makeMapStats(rating,win){
+  const kills=clamp(Math.round(rating*rand(12,16)+(win?2:0)),4,40);
+  const deaths=clamp(Math.round((2.2-rating)*rand(10,15)),4,24);
+  const assists=rand(2,7);
+  const adr=clamp(Math.round(rating*rand(50,65)+rand(5,10)),25,120);
+  const kast=clamp(Math.round(rating*rand(30,35)+rand(20,28)),40,95);
+  return {kills,deaths,assists,adr,kast,kd:deaths>0?(kills/deaths).toFixed(2):kills.toFixed(2)};
+}
+
+function simulateSeries(opts){
+  opts=opts||{};
+  const format=opts.format||'BO3';
+  const tier=opts.tier||'tier2';
+  const matchType=opts.matchType||tier;
+  const needed=getSeriesNeeded(format);
+  const playerPlays=!G.team||!!(G.team.isStarter||G._forcePlayerLineup);
+  const oppRoster=opts.opponentRoster||null;
+  const opponentName=opts.opponentName||(oppRoster&&oppRoster.name)||getTeamName(opts.opponentSkill||50);
+  const lineup=G.team?getMyLineupForMatch(playerPlays):null;
+  let oppLineup;
+  if(oppRoster&&Array.isArray(oppRoster.players)&&oppRoster.players.length>=5){
+    oppLineup=oppRoster.players.slice(0,5);
+  }else{
+    const skill=opts.opponentSkill||45;
+    oppLineup=['Rifler','AWPer','Support','IGL','Entry'].map((role,i)=>({
+      name:`${opponentName}${i+1}`,role,aim:skill,utility:skill,communication:skill,
+      gameSense:skill,consistency:60,mental:50
+    }));
+  }
+  const veto=buildSeriesMaps(format,opponentName);
+  const myStrength=G.team?getLineupStrength(lineup,true):0;
+  const oppStrength=oppRoster&&Array.isArray(oppRoster.players)&&oppRoster.players.length>=5
+    ?calcTeamStrength(oppRoster.players)
+    :getLineupStrength(oppLineup,false);
+  const matchStage=opts.event?tier:(G.team?G.team.tier:getDefaultMatchStage());
+  const series={
+    opponent:opponentName,format,win:false,score:'0:0',maps:[],mapWins:0,mapLosses:0,
+    ratingSum:0,mapCount:0,playerPlayed:playerPlays,staminaCost:0,overdraft:0,
+    bans:veto.bans,strategy:veto.strategy,opponentProfile:veto.opponentProfile,
+    lineup:lineup?lineup.map(p=>p.name):[],oppLineup:oppLineup.map(p=>p.name),
+    isTournament:!!opts.isTournament,tournamentTier:opts.event?opts.event.tier:(opts.isTournament?tier:null),
+    isPlayoff:!!opts.isPlayoff,isFinal:!!opts.isFinal,roundName:opts.roundName|| ''
+  };
+  const forced=Array.isArray(G._forceSeriesWins)&&G._forceSeriesWins.length?G._forceSeriesWins.shift():undefined;
+  for(let i=0;i<veto.maps.length;i++){
+    const map=veto.maps[i];
+    let mapWin;
+    if(forced===true){
+      mapWin=true;
+    }else if(forced===false){
+      mapWin=false;
+    }else if(G.team){
+      const edge=getMapEdge(map,opponentName);
+      const my=myStrength*(1+edge);
+      const opp=oppStrength*(1-edge);
+      mapWin=Math.random()<my/(my+opp);
+    }else{
+      const myP=calculateMatchPower(getPlayerEffectiveAttrs(),G.player.role,'amateur',4,G.player.form,G.player.fatigue,false,false,map);
+      const oppP=calculateOpponentPower(opts.opponentSkill||35,'amateur',null,map);
+      mapWin=Math.random()<myP/(myP+oppP);
+    }
+    const score=makeMapScore(mapWin);
+    let rating=null;
+    let stats={kills:0,deaths:0,assists:0,adr:0,kast:0,kd:'0.00'};
+    if(playerPlays){
+      const myP=calculateMatchPower(getPlayerEffectiveAttrs(),G.player.role,matchStage,6,G.player.form,G.player.fatigue,opts.isPlayoff,opts.isFinal,map);
+      const oppP=calculateOpponentPower(opts.opponentSkill||50,matchStage,oppRoster,map);
+      rating=parseFloat((1+(myP-oppP)/100+randf(-0.08,0.08)).toFixed(2));
+      stats=makeMapStats(rating,mapWin);
+      improveMapProficiency(map,mapWin?0.35:0.2);
+    }
+    series.maps.push({map,score,win:mapWin,rating,...stats});
+    if(mapWin)series.mapWins++;else series.mapLosses++;
+    if(rating!==null){series.ratingSum+=rating;series.mapCount++;}
+    if(series.mapWins>=needed||series.mapLosses>=needed)break;
+  }
+  series.win=series.mapWins>series.mapLosses;
+  series.score=`${series.mapWins}:${series.mapLosses}`;
+  series.avgRating=series.mapCount?parseFloat((series.ratingSum/series.mapCount).toFixed(2)):null;
+  series.kills=series.maps.reduce((s,m)=>s+m.kills,0);
+  series.deaths=series.maps.reduce((s,m)=>s+m.deaths,0);
+  series.assists=series.maps.reduce((s,m)=>s+m.assists,0);
+  series.adr=series.maps.length?Math.round(series.maps.reduce((s,m)=>s+m.adr,0)/series.maps.length):0;
+  series.staminaCost=0; // 简化：比赛阶段不消耗月度体力
+  return series;
+}
+
+function recordSeries(series,monthly){
+  if(!series||!series.playerPlayed||series.avgRating===null)return;
+  G.career.totalMatches=(G.career.totalMatches||0)+1;
+  if(series.win)G.career.wins=(G.career.wins||0)+1;else G.career.losses=(G.career.losses||0)+1;
+  G.career.totalMaps=(G.career.totalMaps||0)+series.maps.length;
+  G.career.ratingSum=(G.career.ratingSum||0)+series.ratingSum;
+  G.career.matchLog.push({
+    date:`${G.year}.${G.month}`,opponent:series.opponent,win:series.win,score:series.score,
+    kills:series.kills,deaths:series.deaths,assists:series.assists,rating:series.avgRating,
+    adr:series.adr,maps:series.maps,mapWins:series.mapWins,mapLosses:series.mapLosses,
+    isTournament:series.isTournament,tournamentTier:series.tournamentTier,
+    isPlayoff:series.isPlayoff,isFinal:series.isFinal,roundName:series.roundName
+  });
+  if(monthly){
+    // 单场成就：记录本月单图最高 Rating（替补未出场的地图 rating 为 null，不计）
+    series.maps.forEach(m=>{if(typeof m.rating==='number'&&m.rating>(monthly.bestMapRating||0))monthly.bestMapRating=m.rating;});
+    monthly.seriesList.push(series);
+    if(series.win)monthly.wins++;else monthly.losses++;
+    monthly.ratingSum+=series.ratingSum;
+    monthly.mapCount+=series.maps.length;
+  }
+}
+
 function getTeamName(skill){
-  // Use year-aware roster team names based on skill level
   const rosters=getTeamRostersByYear(G.year);
-  const topTeams=Object.values(rosters).filter(t=>t.tier==='topTier');
-  const tier1Teams=Object.values(rosters).filter(t=>t.tier==='tier1');
-  const tier2Teams=Object.values(rosters).filter(t=>t.tier==='tier2');
-  const tier3Teams=Object.values(rosters).filter(t=>t.tier==='tier3');
-  if(skill>85)return topTeams[rand(0,topTeams.length-1)]?.name||'Top Team';
-  if(skill>70)return tier1Teams[rand(0,tier1Teams.length-1)]?.name||'Tier1 Team';
-  if(skill>55)return tier2Teams[rand(0,tier2Teams.length-1)]?.name||'Tier2 Team';
-  if(skill>40)return tier3Teams[rand(0,tier3Teams.length-1)]?.name||'Tier3 Team';
+  const own=G.team?G.team.name:null;
+  const bucket=tier=>Object.values(rosters).filter(t=>t.tier===tier&&(!own||t.name!==own));
+  if(skill>85){const a=bucket('topTier');if(a.length)return a[rand(0,a.length-1)].name;}
+  if(skill>70){const a=bucket('tier1');if(a.length)return a[rand(0,a.length-1)].name;}
+  if(skill>55){const a=bucket('tier2');if(a.length)return a[rand(0,a.length-1)].name;}
+  if(skill>40){const a=bucket('tier3');if(a.length)return a[rand(0,a.length-1)].name;}
   const names=['路人战队','小型战队','地区战队','新军战队','FPL队伍'];
   return names[rand(0,names.length-1)];
 }
 
-// Get a random team roster for opponent generation (year-aware)
 function getRandomTeamRoster(targetTier){
-  return getRandomTeamRosterByYear(G.year, targetTier);
+  return getRandomTeamRosterByYear(G.year,targetTier);
 }
 
-function generateMonthlyMatches(){
-  const matches=[];
-  const level=G.careerLevel;
-  if(level==='amateur'){
-    // Ladder opponents: ability ~30, no team structure (no IGL multiplier)
-    const count=rand(3,6);
+// ============================================================
+// MONTHLY CALENDAR (shared by calendar page and settlement)
+// ============================================================
+function estimateEventStamina(event){
+  if(event.tier==='major')return 45;
+  if(event.tier==='superElite')return 36;
+  if(event.tier==='tier1')return 28;
+  if(event.tier==='tier2')return 12;
+  if(event.tier==='qualifier')return 8;
+  return 6;
+}
+function ensureMonthSchedule(persist=true){
+  if(G.monthSchedule&&G.monthSchedule.year===G.year&&G.monthSchedule.month===G.month)return G.monthSchedule;
+  const all=getAllTournamentsForMonth(G.year,G.month);
+  const ownRegion=G.team?G.team.region:null;
+  const tier3=all.filter(e=>e.tier==='tier3');
+  const regionPool=ownRegion?tier3.filter(e=>e.continent===ownRegion):[];
+  const chosen=[];
+  (regionPool.length?regionPool:tier3).slice(0,2).forEach(e=>chosen.push(e));
+  tier3.filter(e=>e.isQualifier).forEach(e=>{if(!chosen.some(x=>x.name===e.name))chosen.push(e);});
+  const events=[];
+  [...all.filter(e=>e.tier!=='tier3'),...chosen].forEach(ev=>{
+    const qualified=!!findPreQualification(ev);
+    const mandatory=!!G.team&&(ev.tier==='major'||ev.tier==='superElite'||ev.tier==='tier1');
+    events.push({
+      kind:'event',id:`ev_${events.length}`,name:ev.name,tier:ev.tier,month:ev.month,
+      registered:!!G.team&&(mandatory||qualified||ev.tier==='tier2'),
+      mandatory,qualified,estStamina:estimateEventStamina(ev),
+      event:ev,done:false,actualStamina:0
+    });
+  });
+  if(G.team){
+    const count=G.team.tier==='topTier'?4:G.team.tier==='tier1'?3:G.team.tier==='tier2'?3:2;
+    const pools={topTier:['topTier','topTier','tier1'],tier1:['tier1','tier1','tier2'],tier2:['tier2','tier2','tier3'],tier3:['tier3','tier3','tier3']};
+    const pool=pools[G.team.tier]||pools.tier2;
     for(let i=0;i<count;i++){
-      matches.push(simulateMatch(30+rand(0,10),false,null));
+      const oppTier=pool[i%pool.length];
+      const roster=getRandomTeamRosterByYear(G.year,oppTier);
+      events.push({
+        kind:'league',id:`lg_${i}`,name:roster?`联赛 vs ${roster.name}`:`联赛第${i+1}轮`,
+        tier:oppTier,registered:true,mandatory:false,
+        estStamina:2,
+        opponentName:roster?roster.name:null,opponentTier:oppTier,done:false,actualStamina:0
+      });
     }
-  } else if(level==='semiPro'){
-    // SemiPro: face tier3 and tier2 teams
-    const count=rand(4,8);
-    for(let i=0;i<count;i++){
-      const useRoster=Math.random()<0.6;
-      let roster=null;
-      let skill=45+rand(0,15);
-      if(useRoster){
-        roster=getRandomTeamRoster(Math.random()<0.4?'tier3':'tier2');
-        if(roster)skill=calcTeamStrength(roster.players)/5;
-      }
-      matches.push(simulateMatch(skill,i<2,'tier2','tier2',false,false,roster));
-    }
-  } else {
-    const count=rand(6,10);
-    const tier=G.team?.tier||'tier1';
-    // Opponent tiers based on player's team tier
-    let oppTiers;
-    if(tier==='topTier') oppTiers=['topTier','topTier','tier1','tier1','tier2'];
-    else if(tier==='tier1') oppTiers=['tier1','tier1','tier1','tier2','tier2'];
-    else oppTiers=['tier2','tier2','tier2','tier1','tier1'];
-    for(let i=0;i<count;i++){
-      const oppTier=oppTiers[rand(0,oppTiers.length-1)];
-      const roster=getRandomTeamRoster(oppTier);
-      let skill;
-      if(roster){
-        skill=calcTeamStrength(roster.players)/5;
-      } else {
-        skill=getTeamOpponentStrength(level,oppTier,G.year);
-      }
-      const isT=i<count-2;
-      const isPlayoff=isT&&i>=count-4;
-      const isFinal=isT&&i===count-1;
-      matches.push(simulateMatch(skill,isT,oppTier,oppTier,isPlayoff,isFinal,roster));
+  }else{
+    for(let i=0;i<3;i++){
+      events.push({
+        kind:'league',id:`ld_${i}`,name:`天梯第${i+1}场`,tier:'ladder',
+        registered:true,mandatory:false,estStamina:1,opponentSkill:rand(25,55),done:false,actualStamina:0
+      });
     }
   }
-  return matches;
+  G.monthSchedule={year:G.year,month:G.month,events,done:false,createdAt:Date.now()};
+  G._staminaOverdraft=[];
+  G._previewOpponent=null;
+  if(persist)persistGame(true);
+  return G.monthSchedule;
+}
+
+function getScheduleTrainingCost(){
+  const perSession=TRAINING_PARAMS[G.training.intensity||'moderate'].stamina;
+  const plan=G.training._oneClickPlan;
+  const sessions=Array.isArray(plan)&&plan.length?plan.length:1;
+  return perSession*sessions;
+}
+function getScheduleEstimate(){
+  ensureMonthSchedule();
+  const training=getScheduleTrainingCost();
+  const streaming=0;
+  // 简化：赛事与直播都不消耗体力；直播每月统一固定 30 场
+  return {events:0,training,streaming,total:training+streaming};
+}
+function toggleScheduleRegistration(id){
+  const s=ensureMonthSchedule();
+  const item=s.events.find(e=>e.id===id);
+  if(!item||item.mandatory)return;
+  item.registered=!item.registered;
+  item.done=false;
+  persistGame(true);
+  renderAll();
+}
+function setMonthPlan(key,value){
+  if(!G.monthPlan)G.monthPlan={trainingIntensity:'moderate',restDays:6,entertainment:3,fitness:2,streamingCap:0,mapStrategy:'auto',bans:[],picks:[]};
+  G.monthPlan[key]=value;
+  persistGame(true);
+  renderAll();
+}
+function toggleMonthPlanMap(key,map){
+  if(!G.monthPlan)return;
+  if(!Array.isArray(G.monthPlan[key]))G.monthPlan[key]=[];
+  const arr=G.monthPlan[key];
+  const idx=arr.indexOf(map);
+  if(idx>=0)arr.splice(idx,1);
+  else{
+    if(key==='bans'&&arr.length>=2)arr.shift();
+    if(key==='picks'&&arr.length>=3)arr.shift();
+    arr.push(map);
+  }
+  persistGame(true);
+  renderAll();
+}
+
+function getUpcomingPreview(){
+  if(G._previewOpponent&&G._previewOpponent.y===G.year&&G._previewOpponent.m===G.month)return G._previewOpponent;
+  const s=ensureMonthSchedule();
+  let result=null;
+  const eventItem=s.events.find(e=>e.kind==='event'&&e.registered&&!e.done&&e.tier!=='tier3');
+  if(eventItem){
+    const ev=eventItem.event;
+    if(ev.tier==='major'&&MAJOR_RIVALS[getMajorKey(ev)]){
+      const r=findRosterByName(MAJOR_RIVALS[getMajorKey(ev)],G.year);
+      if(r&&(!G.team||r.name!==G.team.name))result={name:r.name,tier:r.tier,source:`${ev.name} 决赛对手`};
+    }
+    if(!result){
+      const pool=ev.tier==='major'?['topTier','tier1']:ev.tier==='superElite'?['topTier','tier1']:['tier1','tier2'];
+      for(const t of pool){
+        const r=getRandomTeamRosterByYear(G.year,t);
+        if(r){result={name:r.name,tier:r.tier,source:ev.name};break;}
+      }
+    }
+  }
+  if(!result){
+    const league=s.events.find(e=>e.kind==='league'&&e.registered&&!e.done);
+    if(league&&league.opponentName)result={name:league.opponentName,tier:league.opponentTier||'tier2',source:league.name};
+  }
+  if(!result)result={name:'地区强队',tier:'tier2',source:'下一场'};
+  result.y=G.year;result.m=G.month;
+  G._previewOpponent=result;
+  return result;
+}
+function estimateMapWinRate(map,oppName){
+  const edge=getMapEdge(map,oppName);
+  if(G.team){
+    const lineup=getMyLineupForMatch(G.team.isStarter);
+    const my=getLineupStrength(lineup,true)*(1+edge);
+    const r=findRosterByName(oppName,G.year);
+    const opp=(r&&r.players&&r.players.length>=5?calcTeamStrength(r.players):getLineupStrength(getMyLineupForMatch(false),false))*(1-edge);
+    if(my+opp<=0)return 0.5;
+    return clamp(my/(my+opp),0.05,0.95);
+  }
+  const cw=CORE_WEIGHTS[G.player.role]||CORE_WEIGHTS.Rifler;
+  const a=G.player.attrs;
+  const base=a.aim*cw.aim+a.utility*cw.utility+a.communication*cw.communication+a.gameSense*cw.gameSense;
+  const myP=base*(1+(G.player.form-50)*0.002)*(1-Math.max(0,(G.player.fatigue-30)/200))*(1+edge);
+  const oppAbility=52;
+  const oppP=oppAbility*(1-edge);
+  return clamp(myP/(myP+oppP),0.05,0.95);
+}
+
+// ============================================================
+// MONTHLY MATCH SETTLEMENT
+// ============================================================
+function simulateLeagueItem(item){
+  if(!G.team){
+    return simulateSeries({
+      opponentSkill:item.opponentSkill||35,opponentName:'天梯对手',tier:'ladder',
+      matchType:'ladder',format:'BO1',roundName:item.name
+    });
+  }
+  const roster=item.opponentName?findRosterByName(item.opponentName,G.year):null;
+  const oppSkill=roster?calcTeamStrength(roster.players)/5:getTeamOpponentStrength(G.careerLevel,item.opponentTier,G.year);
+  return simulateSeries({
+    opponentRoster:roster,opponentSkill:oppSkill,opponentName:item.opponentName||undefined,
+    tier:item.opponentTier||G.team.tier,matchType:G.team.tier||'tier2',format:'BO1',
+    roundName:item.name,isTournament:false
+  });
 }
 
 function processMatches(){
-  const matches=generateMonthlyMatches();
-  let wins=0,losses=0,ratingSum=0;
-  let amateurRatingSum=0,amateurMatchCount=0;
-  let beyondLimitsEvents=[];
-  matches.forEach(m=>{
-    if(m.win)wins++;else losses++;
-    ratingSum+=m.rating;
-    G.career.matchLog.push(m);
-    // Track "beyond limits" events
-    if(m.beyondLimits){
-      beyondLimitsEvents.push(m.beyondLimits);
-    }
-    // Track amateur match ratings for streaming growth
-    if(G.careerLevel==='amateur'||!G.team){
-      amateurRatingSum+=m.rating;
-      amateurMatchCount++;
+  const schedule=ensureMonthSchedule();
+  const monthly={seriesList:[],wins:0,losses:0,ratingSum:0,mapCount:0,events:[]};
+  schedule.events.forEach(item=>{
+    if(item.done||!item.registered)return;
+    if(item.kind==='league'){
+      const s=simulateLeagueItem(item);
+      recordSeries(s,monthly);
+      item.result={win:s.win,score:s.score,opponent:s.opponent,rating:s.avgRating,maps:s.maps};
+      item.done=true;
+    }else{
+      const res=simulateEvent(item.event);
+      item.result=res;
+      item.done=true;
+      item.actualStamina=item.event.actualStamina||0;
+      (res.series||[]).forEach(s=>recordSeries(s,monthly));
+      monthly.events.push({name:item.event.name,result:res});
     }
   });
-  // Log beyond limits events
-  beyondLimitsEvents.forEach(ev=>{
-    const attrName={aim:'枪法',utility:'道具',communication:'沟通',gameSense:'战术'}[ev.attr]||ev.attr;
-    G.eventLog.push({text:`✨ 超越极限！${attrName}发挥提升1.5倍，上限提高至${ev.newCap}！`,type:'positive',month:G.month,year:G.year});
-    checkAchievement('transcend');
-  });
-  G.career.totalMatches+=matches.length;
-  G.career.wins+=wins;
-  G.career.losses+=losses;
-  const avgR=matches.length>0?ratingSum/matches.length:0;
-  G.career.ratingHistory.push({month:`${G.year}.${G.month}`,rating:parseFloat(avgR.toFixed(2))});
-  if(avgR>G.career.bestRating)G.career.bestRating=parseFloat(avgR.toFixed(2));
-  G.career.avgRating=G.career.ratingHistory.length>0?
-    parseFloat((G.career.ratingHistory.reduce((s,r)=>s+r.rating,0)/G.career.ratingHistory.length).toFixed(2)):0;
-  
-  // Achievement checks
-  if(G.career.totalMatches===1) checkAchievement('first_match');
-  if(G.career.totalMatches===10) checkAchievement('ten_matches');
-  if(G.career.wins===100) checkAchievement('hundred_wins');
-  if(avgR>=1.50) checkAchievement('rating_150');
-  if(avgR>=1.80) checkAchievement('rating_180');
-  
-  // Check for 1v4/1v5 clutches (simulated based on high rating and wins)
-  if(avgR>=1.80&&wins>0&&Math.random()<0.1) checkAchievement('first_1v5');
-  else if(avgR>=1.50&&wins>0&&Math.random()<0.15) checkAchievement('first_1v4');
-  
-  // Update streaming attraction based on amateur ratings
-  if(amateurMatchCount>0){
-    const amateurAvg=amateurRatingSum/amateurMatchCount;
-    // Higher rating = more viewers attracted
-    // Rating 1.0 = neutral, 1.2 = +20% growth, 0.8 = -20% growth
-    const attractionMod=(amateurAvg-1.0)*50; // -50 to +50 based on rating
-    G.streaming.attraction=G.streaming.attraction||0;
-    G.streaming.attraction=Math.max(0,G.streaming.attraction+attractionMod+amateurMatchCount*2);
-    // Each amateur match adds to follower growth potential
-    G.streaming.matchCount=(G.streaming.matchCount||0)+amateurMatchCount;
+  schedule.done=true;
+  const avg=monthly.mapCount?monthly.ratingSum/monthly.mapCount:0;
+  if(monthly.mapCount>0){
+    G.career.ratingHistory.push({month:`${G.year}.${G.month}`,rating:parseFloat(avg.toFixed(2))});
+    if(avg>G.career.bestRating)G.career.bestRating=parseFloat(avg.toFixed(2));
+    G.career.avgRating=parseFloat((G.career.ratingSum/Math.max(1,G.career.totalMaps)).toFixed(2));
   }
-  // Update form based on relative performance (1.0 = average)
-  if(avgR>1.10)G.player.form=clamp(G.player.form+rand(3,8),0,100);
-  else if(avgR<0.90)G.player.form=clamp(G.player.form-rand(3,8),0,100);
-  // Fatigue is now handled by stamina system (overdraft) and event fatigue
-  return {matches,wins,losses,avgRating:parseFloat(avgR.toFixed(2))};
+  if(G.career.totalMatches>=1)checkAchievement('first_match');
+  if(G.career.totalMatches>=10)checkAchievement('ten_matches');
+  if(G.career.wins>=100)checkAchievement('hundred_wins');
+  // 单场成就：本月单图最高 Rating（不再用月均）
+  const bestMapRating=monthly.bestMapRating||0;
+  if(bestMapRating>=1.50)checkAchievement('rating_150');
+  if(bestMapRating>=1.80)checkAchievement('rating_180');
+  if(avg>=1.80&&monthly.wins>0&&Math.random()<0.1)checkAchievement('first_1v5');
+  else if(avg>=1.50&&monthly.wins>0&&Math.random()<0.15)checkAchievement('first_1v4');
+  if(monthly.mapCount>0&&(!G.team||G.careerLevel==='amateur')){
+    const attractionMod=(avg-1.0)*50;
+    G.streaming.attraction=Math.max(0,(G.streaming.attraction||0)+attractionMod+monthly.mapCount*0.5);
+    G.streaming.matchCount=(G.streaming.matchCount||0)+monthly.mapCount;
+  }
+  if(monthly.mapCount>0){
+    if(avg>1.10)G.player.form=clamp(G.player.form+rand(3,8),0,100);
+    else if(avg<0.90)G.player.form=clamp(G.player.form-rand(3,8),0,100);
+  }
+  return {
+    matches:monthly.seriesList,wins:monthly.wins,losses:monthly.losses,
+    avgRating:parseFloat(avg.toFixed(2)),mapCount:monthly.mapCount,
+    seriesCount:monthly.seriesList.length,events:monthly.events
+  };
 }
 
 // ============================================================
@@ -4361,14 +4813,12 @@ function acceptOffer(offer){
     contract:{salary:offer.salary, length:offer.contractLength, remaining:offer.contractLength, releaseClause:offer.releaseClause},
     isStarter:offer.isStarter
   };
-  // Update career level based on team tier
+  // Update career level based on team tier (also resolves benched/freeAgent)
+  const upgradable=['amateur','semiPro','benched','freeAgent'];
   if(team.tier==='topTier'||team.tier==='tier1'){
-    if(G.careerLevel==='amateur'||G.careerLevel==='semiPro') G.careerLevel='pro';
-  } else if(team.tier==='tier2'){
-    if(G.careerLevel==='amateur') G.careerLevel='semiPro';
-    else if(G.careerLevel==='semiPro') G.careerLevel='semiPro'; // stay semiPro
-  } else if(team.tier==='tier3'){
-    if(G.careerLevel==='amateur') G.careerLevel='semiPro'; // tier3 is still semi-pro level
+    if(upgradable.includes(G.careerLevel)) G.careerLevel='pro';
+  } else if(team.tier==='tier2'||team.tier==='tier3'){
+    if(['amateur','benched','freeAgent'].includes(G.careerLevel)) G.careerLevel='semiPro';
   }
   // New team chemistry break-in period
   G.teamChemistry=40;
@@ -4493,13 +4943,14 @@ function processLife(){
   p.fatigue=clamp(p.fatigue-l.rest*3+3,0,100);
   // Entertainment affects mental
   p.mentalState=clamp(p.mentalState+l.entertainment*2-l.training*0.3,0,100);
-  // Fitness affects physical
+  // Fitness affects physical（上限跟随年龄曲线：18-30 平台，30+ 衰退期不可逆推）
+  const physCapAge=Math.min(p.potential.physical,getMaxPhysical(p.age,p.physicalCap||85));
   if(l.fitness>=3){
-    p.attrs.physical=clamp(p.attrs.physical+0.5,10,p.potential.physical);
+    p.attrs.physical=clamp(p.attrs.physical+0.5,10,physCapAge);
   } else if(l.fitness>=1){
-    p.attrs.physical=clamp(p.attrs.physical+0.1,10,p.potential.physical);
+    p.attrs.physical=clamp(p.attrs.physical+0.1,10,physCapAge);
   } else {
-    p.attrs.physical=clamp(p.attrs.physical-0.1,10,p.potential.physical);
+    p.attrs.physical=clamp(p.attrs.physical-0.1,10,physCapAge);
   }
   // High training without rest = danger
   if(l.training>10&&l.rest<4){
@@ -4516,42 +4967,30 @@ function processFinance(){
   if(G.team){
     income+=G.team.contract.salary;
   }
-  // Streaming (only if streaming is active)
+  // 直播不消耗体力：每月统一固定 30 场天梯
   let streamIncome=0;
   let ladderMatches=0;
   if(G.streaming.active!==false){
-    // Convert remaining stamina to ladder matches
-    ladderMatches=Math.floor(G.stamina);
-    G.stamina=0;
-    
-    // Market attention is the main driver of viewers (80%)
+    ladderMatches=30;
     const marketAttention=G.marketAttention||0;
     const attraction=G.streaming.attraction||0;
-    // Viewers: 80% from market attention, 20% from attraction
     const baseViewers=Math.round(marketAttention*2+attraction*0.3);
-    // Level bonus (higher career = more visibility)
     const levelBonus=G.careerLevel==='amateur'?1.0:G.careerLevel==='semiPro'?1.5:G.careerLevel==='pro'?2.5:4.0;
-    // Form bonus
     const formBonus=1+(G.player.form-50)*0.005;
-    // Ladder matches boost viewers
     const ladderBonus=1+ladderMatches*0.05;
-    const avgViewers=Math.max(0,Math.round(baseViewers*levelBonus*formBonus*ladderBonus*(0.8+Math.random()*0.4)));
-    // Income based on viewers (hidden but still calculated)
+    const avgViewers=Math.max(5000,Math.round(baseViewers*levelBonus*formBonus*ladderBonus*(0.8+Math.random()*0.4))); // 保底 5000 观众
     streamIncome=Math.round(avgViewers*randf(0.02,0.08));
     income+=streamIncome;
-    // Follower growth based on viewers and ladder matches
     const followerGrowth=Math.round(avgViewers*0.3*(0.5+Math.random())+ladderMatches*2);
     G.streaming.followers+=followerGrowth;
     G.streaming.avgViewers=avgViewers;
     G.streaming.totalDonations+=streamIncome;
     G.streaming.monthlyIncome=streamIncome;
     G.streaming.ladderMatches=ladderMatches;
-    // Viewers contribute small amount back to market attention (0.1-0.3 per 100 viewers)
     if(avgViewers>0){
       const attentionGain=avgViewers/100*randf(0.1,0.3);
       G.marketAttention=Math.min(100,(G.marketAttention||0)+attentionGain);
     }
-    // Streaming gives small rating boost
     if(ladderMatches>0){
       G.streaming.attraction=(G.streaming.attraction||0)+ladderMatches*0.5;
     }
@@ -4559,14 +4998,10 @@ function processFinance(){
     G.streaming.monthlyIncome=0;
     G.streaming.avgViewers=0;
     G.streaming.ladderMatches=0;
-    // Not streaming: remaining stamina recovers fatigue
-    const staminaRecovery=Math.floor(G.stamina/RECOVERY_PARAMS.surplusPer);
-    G.player.fatigue=Math.max(0,G.player.fatigue-staminaRecovery);
   }
   // Living expenses
   expense+=500;
   if(G.careerLevel==='pro'||G.careerLevel==='semiPro')expense+=300;
-  // Training expense based on intensity
   const trainingIntensity=G.training.intensity||'moderate';
   const trainingExpense={high:300,moderate:200,light:100}[trainingIntensity]||200;
   expense+=trainingExpense;
@@ -4588,47 +5023,66 @@ function checkTournamentThisMonth(){
 function advanceMonth(){
   if(G.retired){showToast('职业生涯已结束','info');return}
   const logs=[];
-  // Capture current month for logging (before increment)
   const logYear=G.year;
   const logMonth=G.month;
-  // 0. Initialize monthly stamina & apply pending fatigue recovery
+  G._advanceActive=true;
+  G._pendingAchPopups=G._pendingAchPopups||[];
   initMonthlyStamina();
   const recoveryLogs=processPendingFatigueRecovery();
   recoveryLogs.forEach(l=>logs.push(l));
   G._preMonthMatches=G.career.totalMatches;
-  // Defensive: ensure required fields exist
   if(G.player.fatigue===undefined)G.player.fatigue=20;
   if(G.player.mentalState===undefined)G.player.mentalState=70;
   if(G.player.form===undefined)G.player.form=50;
   if(G.staminaMax===undefined)G.staminaMax=100;
+  // 本月赛历：页面与结算共用同一份，不在结算时重新生成
+  ensureMonthSchedule();
+  const schedule=G.monthSchedule;
+  const budget=getScheduleEstimate();
   logs.push(`体力初始化：上限 ${G.staminaMax.toFixed(0)}，当前疲劳 ${G.player.fatigue.toFixed(0)}`);
-  // 1. Process training (execute one-click plan if exists, otherwise normal training)
+  logs.push(`月度计划：报名 ${schedule.events.filter(e=>e.registered).length} 项（比赛不耗体力），训练 ${budget.training}，直播 ${G.streaming.active!==false?'30 场（不耗体力）':'关闭'}`);
+  // 1. Training
   const intensityLabel={high:'高强度',moderate:'适量',light:'轻度'}[G.training.intensity||'moderate'];
   if(G.training._oneClickPlan){
     const plan=G.training._oneClickPlan;
     const gains=[];
     let hitAnyCap=false;
+    let plannedHours=0;
     plan.forEach(p=>{
       G.training.selected=p.attr;
       G.training.hours=p.hours;
-      G.training.intensity=G.training.intensity||'moderate';
+      plannedHours+=p.hours;
       const r=processTraining();
       if(r.hitCap)hitAnyCap=true;
       gains.push(`${ATTR_SHORT[r.attr]}+${r.gain}`);
     });
+    G.monthTrainingHours=(G.monthTrainingHours||0)+plannedHours;
     logs.push(`训练[${intensityLabel}]：${gains.join('，')}${hitAnyCap?' [瓶颈]':''}`);
     delete G.training._oneClickPlan;
   } else {
     const trainResult=processTraining();
+    G.monthTrainingHours=(G.monthTrainingHours||0)+(G.training.hours||getHoursByIntensity(G.training.intensity));
     logs.push(`训练[${intensityLabel}]：${ATTR_SHORT[trainResult.attr]} +${trainResult.gain}${trainResult.hitCap?' [瓶颈]':''}`);
   }
-  // 2. Process life
+  // 2. Life
   processLife();
-  // 3. Process matches
+  // 3. Official events & league matches (all consume before streaming)
   const matchResult=processMatches();
-  logs.push(`比赛：${matchResult.wins}胜${matchResult.losses}负，平均Rating ${matchResult.avgRating}`);
+  if(matchResult.mapCount>0){
+    logs.push(`比赛：${matchResult.seriesCount} 个系列赛，${matchResult.wins}胜${matchResult.losses}负，地图均分Rating ${matchResult.avgRating}（${matchResult.mapCount}张地图）`);
+  }else{
+    logs.push('比赛：本月无出场记录');
+  }
+  matchResult.events.forEach(ev=>{
+    const res=ev.result||{};
+    if(res.qualified===false){
+      logs.push(`${ev.name}：未获参赛资格${res.stage==='benched'?'（替补未出场）':''}`);
+    }else{
+      logs.push(`${ev.name}：${PLACEMENT_TEXT[res.placement]||'参赛'}${res.score?' ('+res.score+')':''}`);
+    }
+  });
   // 3b. MVP checks
-  if(matchResult.avgRating>1.0){
+  if(matchResult.avgRating>1.0&&matchResult.mapCount>0){
     const teamAvg=matchResult.avgRating*0.9;
     if(checkMatchMVP(matchResult.avgRating,teamAvg)){
       logs.push(`🏆 获得比赛 MVP！`);
@@ -4637,23 +5091,21 @@ function advanceMonth(){
   // 4. Random events
   const events=processRandomEvents();
   events.forEach(e=>logs.push(`事件：${e.name}`));
-  // 4b. Historical events
   const histEvents=processHistoricalEvents();
   histEvents.forEach(e=>logs.push(`历史事件：${e.name}（${e.status==='participant'?'当事人':e.status==='topTier'?'一线':'旁观'}）`));
-  // 4c. Rewrite history events
+  // Rewrite-history checks must run after event results are recorded
   const rewriteEvents=checkRewriteHistory();
   rewriteEvents.forEach(e=>logs.push(`✨ 改写历史：${e.name}！`));
-  
-  // 收集需要弹窗的事件
   const allPopupEvents = [
     ...histEvents.map(e => ({...e, type:'historical'})),
     ...rewriteEvents.map(e => ({...e, type:'rewrite'})),
     ...events.filter(e => e.cat === 'rare').map(e => ({...e, type:'rare'}))
   ];
-  
-  // 5. Finance (hidden)
+  // 5. Finance (streaming is fixed 30 matches/month, no stamina cost)
   const finance=processFinance();
-  // logs.push(`财务：收入 ${formatMoney(finance.income)}，支出 ${formatMoney(finance.expense)}`);
+  if(G.streaming.active!==false){
+    logs.push(`直播：本月统一 30 场天梯，收入 ${formatMoney(finance.streamIncome)}`);
+  }
   // 6. Contract
   processContract();
   // 7. Benching check
@@ -4671,45 +5123,16 @@ function advanceMonth(){
       G.career.achievements.push(`${G.year}.${G.month} 晋升为${getCareerLabel(e.level)}`);
     }
   });
-  // 10. Team offers (available to all players, including those with contracts)
+  // 10. Team offers
   const offers=generateTeamOffers();
   if(offers.length>0){
-    if(!G.team){
-      logs.push(`收到 ${offers.length} 个战队邀约！`);
-    } else {
-      logs.push(`收到 ${offers.length} 个转会邀约！`);
-    }
-    // Store offers for player to review
+    logs.push(G.team?`收到 ${offers.length} 个转会邀约！`:`收到 ${offers.length} 个战队邀约！`);
     G._pendingOffers=offers;
   }
-  // 11. Tournament check
-  const tournaments=checkTournamentThisMonth();
-  if(tournaments.length>0&&G.careerLevel!=='amateur'){
-    tournaments.forEach(t=>{
-      logs.push(`赛事：${t.name} 本月举行`);
-      if(G.team&&G.team.isStarter){
-        if(t.type==='ESL'||t.type==='PGL'){
-          const result=simulateTier1Event(t,t.type);
-          if(result){
-            if(!result.qualified){
-              logs.push(`${t.name}：未能获得参赛资格`);
-            } else if(result.stage==='swiss_out'){
-              logs.push(`${t.name}：瑞士轮淘汰（${result.result.wins}胜${result.result.losses}负），奖金 ${formatMoney(result.prize)}`);
-            } else {
-              const placementText={'champion':'冠军','runner-up':'亚军','top4':'四强','top8':'八强'}[result.placement]||'参赛';
-              logs.push(`${t.name}：${placementText}！奖金 ${formatMoney(result.prize)}`);
-            }
-          }
-        } else {
-          simulateTournamentParticipation(t);
-        }
-      }
-    });
-  }
-  // 11.5 End-of-month stamina processing (auto-ladder, fatigue checks)
+  // 11. End-of-month stamina: leftover recovery + overdraft report
   const staminaLogs=processEndOfMonthStamina();
   staminaLogs.forEach(l=>logs.push(l));
-  logs.push(`体力结算：消耗 ${G.staminaConsumed.toFixed(0)}，剩余 ${G.stamina.toFixed(0)}，疲劳 ${G.player.fatigue.toFixed(0)}`);
+  logs.push(`体力结算（训练/直播）：消耗 ${G.staminaConsumed.toFixed(0)}，剩余 ${G.stamina.toFixed(0)}，疲劳 ${G.player.fatigue.toFixed(0)}`);
   // 11.6 Injury processing
   const injuryResult=processInjury();
   if(injuryResult){
@@ -4719,20 +5142,16 @@ function advanceMonth(){
       logs.push(`⚠️ 伤病中：${G.injury.name}，还需 ${injuryResult.monthsLeft} 个月`);
     }
   } else if(!G.injury&&Math.random()<0.05){
-    // Random injury check (5% base chance per month)
     triggerInjury();
   }
   // 11.7 Team chemistry update
   if(G.team){
-    // Monthly training bonus
     updateTeamChemistry('training');
-    // Win/loss based on match results
     if(matchResult.wins>matchResult.losses){
       updateTeamChemistry('win');
     } else if(matchResult.losses>matchResult.wins){
       updateTeamChemistry('loss');
     }
-    // Win streak check
     G._winStreak=(G._winStreak||0)+(matchResult.wins>matchResult.losses?1:-1);
     if(G._winStreak>=3){
       updateTeamChemistry('winStreak3');
@@ -4744,204 +5163,64 @@ function advanceMonth(){
   // 11.8 Fame events
   const fameEvents=checkFameEvents();
   fameEvents.forEach(e=>logs.push(`🌟 ${e.text}`));
-  // 11.9 Map proficiency improvement (from matches)
-  if(matchResult.wins>0){
-    const randomMap=getRandomMap();
-    improveMapProficiency(randomMap,0.5);
-  }
   // 12. Age
   if(G.month===12){
     G.player.age++;
     G.year++;
     G.month=1;
     logs.push(`年龄增长：${G.player.age}岁`);
-    // Clear pending offers on year change (teams from old year may not exist in new year)
     G._pendingOffers=[];
     logs.push(`跨年：旧邀约已清除`);
-    // Process physical age curve
     const maxPhysical=getMaxPhysical(G.player.age,G.player.physicalCap||85);
-    if(G.player.age<27&&G.player.attrs.physical<maxPhysical){
+    // 简化：体能全年段都向年龄曲线目标靠拢（低于则成长，高于则衰退）
+    if(G.player.attrs.physical<maxPhysical){
       const gap=maxPhysical-G.player.attrs.physical;
       const growth=Math.max(0.5,gap*0.1);
       G.player.attrs.physical=Math.min(maxPhysical,G.player.attrs.physical+growth);
       logs.push(`体能成长：${Math.round(G.player.attrs.physical)}/${maxPhysical}`);
-    }else if(G.player.age>27&&G.player.attrs.physical>maxPhysical){
+    }else if(G.player.attrs.physical>maxPhysical){
       const excess=G.player.attrs.physical-maxPhysical;
-      const decline=Math.max(0.3,excess*0.08);
+      const decline=Math.max(0.5,excess*0.3);
       G.player.attrs.physical=Math.max(maxPhysical,G.player.attrs.physical-decline);
       logs.push(`体能衰退：${Math.round(G.player.attrs.physical)}/${maxPhysical}`);
     }
-    // Age-related attribute changes
     if(G.player.age>28){
-      ATTRS.forEach(a=>{
-        if(false&&a==='physical'){ // Disabled: using new age curve system
-          // Physical declines with age, minimum 10
-          G.player.attrs[a]=Math.max(10,G.player.attrs[a]-1);
-        }
-        if(a==='gameSense'){
-          // Game sense improves with experience, use fourDimCaps if available
-          const cap=G.player.fourDimCaps?.[a]||G.player.potential[a];
-          G.player.attrs[a]=Math.min(cap,G.player.attrs[a]+0.5);
-        }
-      });
+      const cap=G.player.fourDimCaps?G.player.fourDimCaps.gameSense:null;
+      G.player.attrs.gameSense=Math.min(cap||G.player.potential.gameSense,G.player.attrs.gameSense+0.5);
     }
-    // Year-end TOP20/TOP1 checks
     const yearRating=getRecentAvgRating(12)||matchResult.avgRating;
-    if(checkTop20(yearRating)){
-      logs.push(`🌟 入选年度 TOP20！`);
-    }
-    if(checkTop1(yearRating)){
-      logs.push(`👑 获得年度 TOP1！`);
-    }
-    // Process age effects
+    if(checkTop20(yearRating))logs.push(`🌟 入选年度 TOP20！`);
+    if(checkTop1(yearRating))logs.push(`👑 获得年度 TOP1！`);
     const ageLogs=processAgeEffects();
     ageLogs.forEach(l=>logs.push(l));
   } else {
     G.month++;
   }
-  // 13. Monthly log (use captured month, not incremented month)
+  // 13. Monthly log
   G.career.monthlyLog.push(`${logYear}年${logMonth}月 | ${logs.join(' | ')}`);
-  // 14. Check retirement conditions
+  // 14. Retirement
   if(G.player.age>=35&&Math.random()<0.3){
-    suggestRetirement();
+    G._retirePromptPending=true;
   }
   if(G.pressure>=95&&G.player.attrs.mental<30&&Math.random()<0.2){
-    suggestRetirement();
+    G._retirePromptPending=true;
   }
-  // Auto-save
+  // Build next month's calendar before saving
+  G.monthSchedule=null;
+  ensureMonthSchedule();
+  G._advanceActive=false;
   saveGame('autosave');
-  // Show event popups if any, then show month summary
+  const afterAllPopups=()=>showPendingAchievementsThen(()=>{
+    showMonthSummary(logs,matchResult,events,pressureMsg,offers,{year:logYear,month:logMonth});
+  });
   if(allPopupEvents.length > 0){
-    showEventPopupsSequentially(allPopupEvents, () => {
-      showMonthSummary(logs,matchResult,events,pressureMsg,offers);
-    });
+    showEventPopupsSequentially(allPopupEvents, afterAllPopups);
   } else {
-    showMonthSummary(logs,matchResult,events,pressureMsg,offers);
+    afterAllPopups();
   }
   renderAll();
 }
 
-function simulateTournamentParticipation(tournament){
-  const p=G.player;
-  // Track tournament count for dense schedule check
-  G.monthTournamentCount=(G.monthTournamentCount||0)+1;
-  // Tournament opponent tiers based on tournament tier
-  let oppTierPool;
-  if(tournament.tier==='major') oppTierPool=['topTier','topTier','tier1','tier1'];
-  else if(tournament.tier==='superElite') oppTierPool=['topTier','tier1','tier1','tier2'];
-  else if(tournament.tier==='tier1') oppTierPool=['tier1','tier1','tier2','tier2'];
-  else if(tournament.tier==='tier2') oppTierPool=['tier2','tier2','tier3','tier3'];
-  else oppTierPool=['tier3','tier3','tier3','tier3']; // tier3
-  const rounds=tournament.tier==='major'?rand(2,4):tournament.tier==='superElite'?rand(2,3):tournament.tier==='tier2'?rand(1,2):rand(1,2);
-  let wins=0;
-  let totalRating=0;
-  const matchResults=[];
-  for(let i=0;i<rounds;i++){
-    // Each round has different opponent (increasing strength)
-    const oppTier=oppTierPool[Math.min(i,oppTierPool.length-1)];
-    const roster=getRandomTeamRoster(oppTier);
-    let oppSkill;
-    if(roster){
-      oppSkill=calcTeamStrength(roster.players)/5;
-    } else {
-      oppSkill=getTeamOpponentStrength(G.careerLevel,oppTier,G.year);
-    }
-    // Determine playoff/final status for mental base
-    const isPlayoff=i>=rounds-2;
-    const isFinal=i===rounds-1;
-    // Use simulateMatch for unified logic (beyond limits, stamina, mental growth)
-    const result=simulateMatch(oppSkill,true,tournament.tier,tournament.tier,isPlayoff,isFinal,roster);
-    if(result.win)wins++;
-    totalRating+=result.rating;
-    matchResults.push(result);
-    // Handle beyond limits event
-    if(result.beyondLimits){
-      const attrName=ATTR_SHORT[result.beyondLimits.attr]||result.beyondLimits.attr;
-      addEventBeyondLimits(result.beyondLimits.attr,result.beyondLimits.newCap);
-      G.career.matchLog.push({...result,beyondLimits:result.beyondLimits});
-    }
-  }
-  const avgRating=rounds>0?totalRating/rounds:1.0;
-  const advanced=wins>rounds/2;
-  // Add event fatigue based on tournament tier
-  const fatigueType=tournament.tier==='major'?'major':tournament.tier==='superElite'?'superElite_event':tournament.tier==='tier1'?'tier1_event':'tier2_event';
-  addEventFatigue(fatigueType);
-  // Get prize pool for this tournament
-  const prizePool=getPrizePool(tournament.tier,G.year);
-  const teamTier=G.team?.tier||'tier2';
-  // Tournament results with prize calculation
-  if(advanced&&tournament.tier==='major'){
-    G.career.achievements.push(`${G.year} ${tournament.name} 晋级`);
-    G.pressure=clamp(G.pressure-12,0,100);
-    const playerPrize=calculatePlayerPrize(prizePool,'top8',teamTier); // Minimum top8 for advancing in major
-    G.money+=playerPrize;
-    G.eventLog.push({text:`参加 ${tournament.name} 并晋级！Rating ${avgRating.toFixed(2)}，个人奖金 ${formatMoney(playerPrize)}`,type:'positive',month:G.month,year:G.year});
-  } else if(advanced){
-    const placement=tournament.tier==='superElite'?'top4':'top8';
-    const playerPrize=calculatePlayerPrize(prizePool,placement,teamTier);
-    G.money+=playerPrize;
-    G.eventLog.push({text:`参加 ${tournament.name}，晋级下一轮。Rating ${avgRating.toFixed(2)}，个人奖金 ${formatMoney(playerPrize)}`,type:'positive',month:G.month,year:G.year});
-  } else {
-    // Even elimination gets a small prize
-    const playerPrize=calculatePlayerPrize(prizePool,'swissOut',teamTier);
-    G.money+=playerPrize;
-    G.eventLog.push({text:`参加 ${tournament.name}，未能晋级。Rating ${avgRating.toFixed(2)}，参与奖金 ${formatMoney(playerPrize)}`,type:'negative',month:G.month,year:G.year});
-  }
-  // Update form based on tournament performance
-  if(avgRating>1.15)G.player.form=clamp(G.player.form+rand(5,10),0,100);
-  else if(avgRating<0.90)G.player.form=clamp(G.player.form-rand(5,10),0,100);
-  // Calculate total stamina cost from all matches
-  const totalStaminaCost=matchResults.reduce((sum,r)=>sum+(r.staminaCost||0),0);
-  G.tournamentResults.push({
-    name:tournament.name,
-    tier:tournament.tier,
-    year:G.year,
-    month:G.month,
-    rounds,
-    wins,
-    advanced,
-    staminaCost:totalStaminaCost,
-    prizePool,
-    avgRating:parseFloat(avgRating.toFixed(2))
-  });
-  
-  // Handle qualifier victory - grant qualification for main event
-  // Player must win ALL matches to be qualifier champion
-  if(tournament.isQualifier && wins===rounds){
-    const qualification = {
-      eventName: tournament.qualifiesFor,
-      qualifiedAt: { year: G.year, month: G.month },
-      eventMonth: tournament.qualifiesForMonth,
-      eventYear: tournament.qualifiesForYear
-    };
-    
-    // Check if not already qualified
-    if(!G.qualifiedEvents.some(q => q.eventName === qualification.eventName && q.eventYear === qualification.eventYear)){
-      G.qualifiedEvents.push(qualification);
-      G.eventLog.push({
-        text: `🏆 赢得 ${tournament.name}，获得 ${tournament.qualifiesFor} 参赛资格！`,
-        type: 'positive',
-        month: G.month,
-        year: G.year
-      });
-      G.player.mentalState = clamp(G.player.mentalState + 5, 0, 100);
-      G.marketAttention = Math.min(100, G.marketAttention + 2);
-    }
-  }
-}
-
-function suggestRetirement(){
-  showModal(`
-    <h2>🏁 职业生涯的十字路口</h2>
-    <p>${G.player.name}，你已经 ${G.player.age} 岁了。</p>
-    <p>多年的职业生涯让你积累了宝贵的经验，但身体和心态也在发出信号。</p>
-    <p>是否考虑退役？</p>
-    <div class="modal-buttons">
-      <button class="btn-secondary" onclick="closeModal()">继续职业生涯</button>
-      <button class="btn-danger" onclick="retire()">选择退役</button>
-    </div>
-  `);
-}
 
 function retire(){
   G.retired=true;
@@ -4989,7 +5268,7 @@ function updateTabVisibility(){
   const hasBeenPro=level==='pro'||level==='benched'||level==='freeAgent';
   const hasBeenSemiPro=hasBeenPro||level==='semiPro';
   // Streaming & Training: always visible (路人阶段)
-  // Dashboard: visible from semiPro+ (even free agent)
+  // Dashboard: always visible（含路人期）
   // Matches: visible from semiPro+
   // Career: visible from semiPro+
   // Teams: visible from semiPro+
@@ -4998,8 +5277,8 @@ function updateTabVisibility(){
   const tabs={
     streaming:true,
     training:true,
-    dashboard:hasBeenSemiPro,
-    matches:hasBeenSemiPro,
+    dashboard:true,
+    matches:true,
     career:hasBeenSemiPro,
     teams:hasBeenSemiPro,
     life:hasBeenPro,
@@ -5046,21 +5325,17 @@ function renderTab(tab){
 function renderStreaming(){
   const p=G.player;
   const s=G.streaming;
-  // Market attention is the main driver of viewers
   const marketAttention=G.marketAttention||0;
   const attraction=s.attraction||0;
   const ladderMatches=s.ladderMatches||0;
-  // Calculate estimated viewers based primarily on market attention
-  // Market attention contributes 80%, attraction contributes 20%
   const baseViewers=Math.round(marketAttention*2+attraction*0.3);
   const levelBonus=G.careerLevel==='amateur'?1.0:G.careerLevel==='semiPro'?1.5:G.careerLevel==='pro'?2.5:4.0;
-  const estimatedViewers=Math.max(0,Math.round(baseViewers*levelBonus));
-  // Use actual stored values, but show estimated if stream just started (avgViewers is 0)
+  const estimatedViewers=Math.max(5000,Math.round(baseViewers*levelBonus)); // 保底 5000 观众
   const currentFollowers=s.followers||0;
   const currentAvgViewers=s.avgViewers||0;
   const isActive=s.active!==false;
-  // Display viewers: use current if available, otherwise use estimated
   const displayViewers=currentAvgViewers>0?currentAvgViewers:estimatedViewers;
+  const budget=getScheduleEstimate();
   return `
     <div class="card" style="border-color:var(--purple)">
       <h3>📺 你的直播间</h3>
@@ -5073,25 +5348,32 @@ function renderStreaming(){
         </div>`:''}
       </div>
       <div style="text-align:center;margin-bottom:12px">
-        <button class="${isActive?'btn-danger':'btn-success'} btn-small" onclick="toggleStreaming()">
-          ${isActive?'停止直播':'开始直播'}
-        </button>
+        <button class="${isActive?'btn-danger':'btn-success'} btn-small" onclick="toggleStreaming()">${isActive?'停止直播':'开始直播'}</button>
       </div>
-      <div class="stat-row"><span class="stat-label">知名度</span><span class="stat-value" style="color:var(--accent)">${Math.round(marketAttention)}/100</span></div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">直播每月统一进行 30 场天梯对局，不消耗体力。</div>
+      <div class="stat-row"><span class="stat-label">市场关注度</span><span class="stat-value" style="color:var(--accent)">${Math.round(marketAttention)}/100</span></div>
       <div class="stat-row"><span class="stat-label">粉丝数</span><span class="stat-value">${currentFollowers.toLocaleString()}</span></div>
       <div class="stat-row"><span class="stat-label">平均观众</span><span class="stat-value">${currentAvgViewers}</span></div>
       <div class="stat-row"><span class="stat-label">直播吸引力</span><span class="stat-value" style="color:var(--text2)">${Math.round(attraction)}</span></div>
       <div class="stat-row"><span class="stat-label">本月天梯</span><span class="stat-value">${ladderMatches} 场</span></div>
     </div>
     <div class="card">
-      <h3>📈 直播机制说明</h3>
+      <h3>🔋 本月体力预算</h3>
+      <div class="stat-row"><span class="stat-label">体力上限</span><span class="stat-value">${Math.round(G.staminaMax||0)}</span></div>
+      <div class="stat-row"><span class="stat-label">已报名赛事预估</span><span class="stat-value">${budget.events}</span></div>
+      <div class="stat-row"><span class="stat-label">训练消耗</span><span class="stat-value">${budget.training}</span></div>
+      <div class="stat-row"><span class="stat-label">本月直播</span><span class="stat-value">30 场（不耗体力）</span></div>
+      <div class="stat-row"><span class="stat-label">计划合计 / 结余</span><span class="stat-value" style="color:${G.staminaMax-budget.total<0?'var(--red)':'var(--green)'}">${budget.total} / ${Math.round(G.staminaMax-budget.total)}</span></div>
+      <div class="stat-row"><span class="stat-label">当前剩余体力</span><span class="stat-value">${Math.round(G.stamina||0)}</span></div>
+    </div>
+    <div class="card">
+      <h3>📈 体力与直播规则</h3>
       <p style="font-size:12px;color:var(--text2);line-height:1.7">
-        观众数量主要取决于<strong style="color:var(--accent)">知名度</strong>（约80%）和直播吸引力（约20%）。<br>
-        • 开启直播后，剩余体力转换为天梯场次<br>
-        • 天梯场次越多，观众增长越快<br>
-        • 不开启直播时，剩余体力恢复疲劳<br>
-        • 赛事表现提升知名度 → 观众增加<br>
-        • 职业等级越高，观众加成越大
+        • 直播每月统一 30 场天梯，不消耗体力；体力只用于训练<br>
+        • 未使用的体力在月末按每 ${RECOVERY_PARAMS.surplusPer} 点恢复 1 疲劳<br>
+        • 实际消耗超过计划时会提示透支的赛事并增加疲劳<br>
+        • 观众数量主要取决于知名度（约80%）和直播吸引力（约20%），保底 5000 观众<br>
+        • 赛事表现提升知名度 → 观众增加；职业等级越高，观众加成越大
       </p>
     </div>
     <div class="card">
@@ -5154,8 +5436,8 @@ function renderDashboard(){
     </div>
     <div class="grid-2">
       <div class="card">
-        <h3>🌟 知名度与荣誉</h3>
-        <div class="stat-row"><span class="stat-label">知名度</span><span class="stat-value" style="color:var(--accent)">${G.fame}/100</span></div>
+        <h3>🌟 声望与荣誉</h3>
+        <div class="stat-row"><span class="stat-label">声望</span><span class="stat-value" style="color:var(--accent)">${G.fame}/100</span></div>
         <div class="progress-bar"><div class="progress-fill" style="width:${G.fame}%;background:var(--accent)"></div></div>
         ${G.fame>=31?`<div style="font-size:11px;color:var(--green);margin-top:4px">✅ 转会吸引力 +10%</div>`:''}
         ${G.fame>=61?`<div style="font-size:11px;color:var(--green)">✅ 直播收入 ×1.5</div>`:''}
@@ -5252,14 +5534,18 @@ function renderTraining(){
   const gap=Math.max(0.1,1-(p.attrs[selected]/cap));
   const gainPreview=atCap?0:(t.stamina*0.08*ac*gap*t.multiplier);
   
+  // 训练在下月开始时结算，此时体力已重置为满值
+  const nextMonthStamina=getMonthlyStamina(p.attrs.physical);
+  const trainingBudget=getScheduleTrainingCost();
+
   // Calculate fatigue preview
-  const surplusAfter=Math.max(0,G.stamina-t.stamina);
+  const surplusAfter=Math.max(0,nextMonthStamina-t.stamina);
   const recoveryFromSurplus=Math.floor(surplusAfter/RECOVERY_PARAMS.surplusPer);
-  const baseRecovery=Math.floor(p.physical*RECOVERY_PARAMS.baseRate);
+  const baseRecovery=Math.floor((p.attrs?p.attrs.physical:p.physical)*RECOVERY_PARAMS.baseRate);
   const fatiguePreview=t.fatigue-recoveryFromSurplus-baseRecovery;
   
   // Check if enough stamina
-  const canTrain=G.stamina>=t.stamina;
+  const canTrain=nextMonthStamina>=trainingBudget;
   
   return `
     <div class="card">
@@ -5281,7 +5567,8 @@ function renderTraining(){
       }).join('')}
     </div>
     <div class="card">
-      <h3>🎚️ 训练强度（当前体力：${Math.round(G.stamina)}/${Math.round(G.staminaMax||100)}）</h3>
+      <h3>🎚️ 训练强度（下月可用体力：${Math.round(nextMonthStamina)}）</h3>
+      <p style="font-size:12px;color:var(--text2);margin-bottom:8px">训练在进入下月时结算，使用重置后的满体力；本月剩余体力已按月末规则转为疲劳恢复。</p>
       <div style="display:flex;gap:8px;margin:12px 0">
         <button class="btn-secondary ${intensity==='high'?'btn-primary':''}" onclick="setTrainingIntensity('high')" style="flex:1">
           🔥 高强度<br><span style="font-size:11px">消耗 ${TRAINING_PARAMS.high.stamina} 体力 | 能力 ×${TRAINING_PARAMS.high.multiplier}</span>
@@ -5293,7 +5580,7 @@ function renderTraining(){
           🌿 轻度<br><span style="font-size:11px">消耗 ${TRAINING_PARAMS.light.stamina} 体力 | 能力 ×${TRAINING_PARAMS.light.multiplier}</span>
         </button>
       </div>
-      ${!canTrain?`<div style="font-size:13px;color:var(--red);margin-top:8px">⚠ 体力不足，无法进行${t.label}训练</div>`:''}
+      ${!canTrain?`<div style="font-size:13px;color:var(--red);margin-top:8px">⚠ 下月体力不足以完成当前训练计划（需 ${trainingBudget} 点，可用 ${Math.round(nextMonthStamina)} 点）</div>`:''}
       ${atCap?`<div style="font-size:13px;color:var(--red);margin-top:8px">⚠ ${ATTR_SHORT[selected]} 已达上限，训练无法提升。${p.hasHitCapBefore?'比赛中可能触发「超越极限」事件。':''}</div>`
       :`<div style="font-size:12px;color:var(--text2);margin-top:8px">预计提升：<span style="color:var(--green);font-weight:600">+${gainPreview.toFixed(2)}</span> | 疲劳变化：<span style="color:${fatiguePreview>0?'var(--red)':'var(--green)'};font-weight:600">${fatiguePreview>0?'+':''}${fatiguePreview}</span></div>`}
       <div style="font-size:11px;color:var(--text2);margin-top:8px;opacity:0.8">💡 剩余体力每 ${RECOVERY_PARAMS.surplusPer} 点恢复 1 疲劳，体能提供基础恢复</div>
@@ -5302,62 +5589,114 @@ function renderTraining(){
 }
 
 function renderMatches(){
-  const recentMatches=G.career.matchLog.slice(-20).reverse();
-  const tournaments=G.tournamentResults.slice(-10).reverse();
-  const currentTournaments=checkTournamentThisMonth();
+  const schedule=ensureMonthSchedule();
+  const budget=getScheduleEstimate();
+  const preview=getUpcomingPreview();
+  const vetos=buildSeriesMaps('BO3',preview.name);
+  const recentMatches=G.career.matchLog.slice(-15).reverse();
+  const tournaments=G.tournamentResults.slice(-8).reverse();
   const qualifiedEvents=G.qualifiedEvents||[];
-
+  const plan=G.monthPlan||{};
+  const remaining=G.staminaMax-budget.total;
   const getTierBadge=(t)=>{
-    if(t.tier==='major') return '<span class="badge badge-purple">Major</span>';
-    if(t.tier==='superElite') return '<span class="badge badge-purple">超级精英</span>';
-    if(t.tier==='tier1') return '<span class="badge badge-blue">S级</span>';
-    if(t.tier==='tier2') return '<span class="badge badge-yellow">A级</span>';
-    if(t.tier==='qualifier') return '<span class="badge badge-green">预选赛</span>';
-    return '<span class="badge badge-gray">B级</span>';
+    if(t==='major')return'<span class="badge badge-purple">Major</span>';
+    if(t==='superElite')return'<span class="badge badge-purple">超级精英</span>';
+    if(t==='tier1')return'<span class="badge badge-blue">S级</span>';
+    if(t==='tier2')return'<span class="badge badge-yellow">A级</span>';
+    if(t==='qualifier')return'<span class="badge badge-green">预选赛</span>';
+    if(t==='ladder')return'<span class="badge badge-gray">天梯</span>';
+    return'<span class="badge badge-gray">B级</span>';
   };
-
+  const scheduleHtml=schedule.events.map(e=>{
+    const done=''; // 简化：不再显示实际体力消耗
+    const badge=e.mandatory?'<span class="badge badge-blue">必赛</span>':(e.registered?'<span class="badge badge-green">已报名</span>':'<span class="badge badge-gray">已跳过</span>');
+    const btn=e.mandatory?'':`<button class="btn-${e.registered?'danger':'success'} btn-small" onclick="toggleScheduleRegistration('${e.id}')">${e.registered?'跳过':'报名'}</button>`;
+    const q=e.qualified?' <span style="font-size:11px;color:var(--green)">已获资格</span>':'';
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+        <div>${e.kind==='league'?'🎯':'🏆'} ${e.name} ${getTierBadge(e.tier)} ${badge}${q}</div>
+        <div style="display:flex;gap:6px;align-items:center">${done}${btn}</div>
+      </div>
+    </div>`;
+  }).join('');
+  const mapRows=MAPS.map(m=>{
+    const banned=vetos.bans.includes(m);
+    const edge=getMapEdge(m,preview.name);
+    const lab=getMapAdvantageLabel(edge);
+    const wr=Math.round(estimateMapWinRate(m,preview.name)*100);
+    const oppProf=vetos.opponentProfile[m];
+    return `<tr style="${banned?'opacity:.4;text-decoration:line-through':''}">
+      <td>${m}${banned?' <span class="badge badge-gray">禁</span>':''}</td>
+      <td>${Math.round(G.mapProficiency[m]||50)}</td>
+      <td>${oppProf}</td>
+      <td style="color:${lab.color}">${wr}%</td>
+      <td style="color:${lab.color}">${lab.text}</td>
+    </tr>`;
+  }).join('');
+  const chip=(type,m,color)=>`<button class="btn-secondary btn-small" style="margin:2px;${(plan[type]||[]).includes(m)?`border-color:${color};color:${color}`:''}" onclick="toggleMonthPlanMap('${type}','${m}')">${type==='bans'?'禁':'选'} ${m}</button>`;
   return `
-    ${currentTournaments.length>0?`
+    <div class="card" style="border-color:var(--accent2)">
+      <h3>📅 ${schedule.year}年${schedule.month}月 赛历</h3>
+      <div style="font-size:12px;color:var(--text2);line-height:1.8;margin-bottom:8px">
+        体力上限 <strong>${Math.round(G.staminaMax)}</strong> ｜ 已报名赛事预估 <strong>${budget.events}</strong> ｜ 训练 <strong>${budget.training}</strong> ｜ 直播 <strong>30 场（不耗体力）</strong>
+        ｜ 合计 <strong style="color:${remaining<0?'var(--red)':'var(--green)'}">${budget.total}</strong>，结余 <strong style="color:${remaining<0?'var(--red)':'var(--green)'}">${remaining}</strong>
+      </div>
+      ${budget.total>G.staminaMax?`<div style="font-size:12px;color:var(--red);margin-bottom:8px">⚠️ 计划已超过体力上限，超出的赛事会透支体力并增加疲劳。</div>`:''}
+      ${scheduleHtml||'<div class="empty-state">本月没有可参加的比赛</div>'}
+      <div style="font-size:11px;color:var(--text2);margin-top:8px">比赛按赛历从上到下结算；直播每月统一 30 场，不消耗体力。</div>
+    </div>
     <div class="card" style="border-color:var(--purple)">
-      <h3>🏆 本月赛事</h3>
-      ${currentTournaments.map(t=>{
-        const isQ=t.isQualifier;
-        const style=isQ?'background:rgba(76,175,80,0.1);padding:8px;border-radius:6px;margin:4px 0;border-left:3px solid var(--green)':'padding:4px 0';
-        return `<div style="${style}"><span style="font-size:13px">• ${t.name}</span> ${getTierBadge(t)}${isQ?` <span style="font-size:11px;color:var(--green)">→ ${t.qualifiesFor}</span>`:''}</div>`;
-      }).join('')}
-    </div>`:''}
+      <h3>🗺️ 地图禁选与优势</h3>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <span style="font-size:12px;color:var(--text2)">关键场次策略</span>
+        <select onchange="setMonthPlan('mapStrategy',this.value)" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px">
+          <option value="auto" ${plan.mapStrategy==='auto'?'selected':''}>自动禁选</option>
+          <option value="ban_strong" ${plan.mapStrategy==='ban_strong'?'selected':''}>禁用对手强图</option>
+          <option value="pick_strong" ${plan.mapStrategy==='pick_strong'?'selected':''}>优先自选强图</option>
+          <option value="manual" ${plan.mapStrategy==='manual'?'selected':''}>手动禁选</option>
+        </select>
+        <span style="font-size:12px;color:var(--text2)">下一场预览：<strong>${preview.name}</strong>（${preview.source}）</span>
+      </div>
+      <div style="margin-bottom:6px">${MAPS.map(m=>chip('bans',m,'var(--red)')).join('')}</div>
+      <div style="margin-bottom:10px">${MAPS.map(m=>chip('picks',m,'var(--green)')).join('')}</div>
+      <table>
+        <tr><th>地图</th><th>我方熟练</th><th>对手强度</th><th>预估胜率</th><th>判定</th></tr>
+        ${mapRows}
+      </table>
+      <div style="font-size:11px;color:var(--text2);margin-top:8px">被禁地图不会进入系列赛；手动选择最多2张禁图、3张选图。优势判定由双方地图熟练度差决定。</div>
+    </div>
     ${qualifiedEvents.length>0?`
     <div class="card" style="border-color:var(--green)">
       <h3>✅ 已获参赛资格</h3>
       ${qualifiedEvents.map(q=>`
         <div class="stat-row">
           <span>${q.eventName}</span>
-          <span class="badge badge-green">${q.eventYear}年${q.eventMonth}月</span>
+          <span class="badge badge-green">${q.eventYear}年${q.eventMonth}月 ${G.team&&q.teamId===G.team.id?'· '+G.team.name:''}</span>
         </div>
       `).join('')}
     </div>`:''}
     <div class="card">
       <h3>📊 比赛统计</h3>
       <div class="grid-3">
-        <div class="stat-row"><span class="stat-label">总场次</span><span class="stat-value">${G.career.totalMatches}</span></div>
+        <div class="stat-row"><span class="stat-label">系列赛</span><span class="stat-value">${G.career.totalMatches}</span></div>
         <div class="stat-row"><span class="stat-label">胜率</span><span class="stat-value">${G.career.totalMatches>0?Math.round(G.career.wins/G.career.totalMatches*100):0}%</span></div>
-        <div class="stat-row"><span class="stat-label">平均Rating</span><span class="stat-value">${G.career.avgRating}</span></div>
+        <div class="stat-row"><span class="stat-label">地图Rating</span><span class="stat-value">${G.career.avgRating}</span></div>
       </div>
+      <div class="stat-row"><span class="stat-label">出场地图总数</span><span class="stat-value">${G.career.totalMaps||0}</span></div>
     </div>
     <div class="card">
-      <h3>🕹️ 最近比赛记录</h3>
+      <h3>🕹️ 最近系列赛</h3>
       ${recentMatches.length===0?'<div class="empty-state">暂无比赛记录</div>':`
       <table>
-        <tr><th>日期</th><th>对手</th><th>结果</th><th>K/D/A</th><th>Rating</th><th>ADR</th><th>类型</th></tr>
-        ${recentMatches.map(m=>{const rl=getRatingLabel(m.rating);return`
+        <tr><th>日期</th><th>对手</th><th>比分</th><th>K/D/A</th><th>Rating</th><th>地图</th></tr>
+        ${recentMatches.map(m=>{const rl=getRatingLabel(m.rating);const mapsText=(m.maps||[]).map(x=>`${x.map} ${x.score}`).join(' / ');return`
           <tr>
             <td>${m.date}</td>
-            <td>${m.opponent}</td>
+            <td>${m.opponent}<div style="font-size:10px;color:var(--text2)">${m.roundName||''}${m.isTournament?' · 赛事':''}</div></td>
             <td><span style="color:${m.win?'var(--green)':'var(--red)'}">${m.win?'胜':'负'} ${m.score}</span></td>
             <td>${m.kills}/${m.deaths}/${m.assists}</td>
-            <td style="color:${rl.color}" title="${rl.desc}">${m.rating} <span style="font-size:10px;opacity:0.7">${rl.label}</span></td>
-            <td>${m.adr}</td>
-            <td>${m.isTournament?'<span class="badge badge-purple">赛事</span>':'<span class="badge badge-blue">常规</span>'}</td>
+            <td style="color:${rl.color}" title="${rl.desc}">${m.rating}</td>
+            <td style="font-size:11px;color:var(--text2)">${mapsText}</td>
           </tr>
         `;}).join('')}
       </table>`}
@@ -5366,9 +5705,12 @@ function renderMatches(){
     <div class="card">
       <h3>🏆 赛事记录</h3>
       ${tournaments.map(t=>`
-        <div class="stat-row">
-          <span>${t.year}.${t.month} ${t.name}</span>
-          <span class="badge badge-${t.advanced?'green':'red'}">${t.advanced?'晋级':'淘汰'} (${t.wins}/${t.rounds})</span>
+        <div style="padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="display:flex;justify-content:space-between">
+            <span>${t.year}.${t.month} ${t.name}</span>
+            <span class="badge badge-${t.placement==='champion'?'green':t.placement==='runnerUp'?'blue':(t.placement==='swissOut'||t.placement==='top16')?'red':'yellow'}">${PLACEMENT_TEXT[t.placement]||'参赛'}</span>
+          </div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">${(t.maps||[]).map(r=>`${r.stage} vs ${r.opponent} ${r.score}`).join('；')}${t.avgRating?' ｜ 地图Rating '+t.avgRating:''}</div>
         </div>
       `).join('')}
     </div>`:''}
@@ -5652,17 +5994,38 @@ function closeModal(){
   document.getElementById('modal-overlay').classList.remove('active');
 }
 
-function showMonthSummary(logs,matchResult,events,pressureMsg,offers){
+function showMonthSummary(logs,matchResult,events,pressureMsg,offers,period){
   const p=G.player;
-  let html=`<h2>📅 ${G.year}年${G.month}月 结算</h2>`;
+  const py=period?period.year:G.year;
+  const pm=period?period.month:G.month;
+  let html=`<h2>📅 ${py}年${pm}月 结算</h2>`;
   html+=`<div class="card"><h3>📊 本月概要</h3>`;
   logs.forEach(l=>html+=`<div class="log-entry">${l}</div>`);
   html+=`</div>`;
   html+=`<div class="card"><h3>🎮 比赛结果</h3>`;
-  html+=`<div class="stat-row"><span class="stat-label">战绩</span><span class="stat-value">${matchResult.wins}胜 ${matchResult.losses}负</span></div>`;
+  html+=`<div class="stat-row"><span class="stat-label">系列赛战绩</span><span class="stat-value">${matchResult.wins}胜 ${matchResult.losses}负（${matchResult.seriesCount||0} 个系列赛）</span></div>`;
   const rl=getRatingLabel(matchResult.avgRating);
-  html+=`<div class="stat-row"><span class="stat-label">平均Rating</span><span class="stat-value" style="color:${rl.color}">${matchResult.avgRating} (${rl.label})</span></div>`;
+  html+=`<div class="stat-row"><span class="stat-label">地图平均Rating</span><span class="stat-value" style="color:${rl.color}">${matchResult.avgRating} (${rl.label})</span></div>`;
+  html+=`<div class="stat-row"><span class="stat-label">出场地图</span><span class="stat-value">${matchResult.mapCount||0} 张</span></div>`;
+  html+=`<div class="stat-row"><span class="stat-label">体力消耗</span><span class="stat-value">${Math.round(G.staminaConsumed)} / 上限 ${Math.round(G.staminaMax)}</span></div>`;
   html+=`</div>`;
+  if(matchResult.events&&matchResult.events.length>0){
+    html+=`<div class="card"><h3>🏆 赛事战报</h3>`;
+    matchResult.events.forEach(ev=>{
+      const res=ev.result||{};
+      if(res.qualified===false){
+        html+=`<div class="stat-row"><span class="stat-label">${ev.name}</span><span class="stat-value" style="color:var(--red)">未获资格</span></div>`;
+      }else{
+        const rounds=(res.rounds||[]).map(r=>`${r.stage} vs ${r.opponent} ${r.score}`).join('；');
+        html+=`<div style="padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="font-weight:600">${ev.name} <span class="badge badge-purple">${PLACEMENT_TEXT[res.placement]||'参赛'}</span></div>
+          <div style="font-size:12px;color:var(--text2);margin-top:4px">${rounds||'无出场'}</div>
+          ${res.mapsText?`<div style="font-size:12px;color:var(--text2);margin-top:2px">地图：${res.mapsText}</div>`:''}
+        </div>`;
+      }
+    });
+    html+=`</div>`;
+  }
   if(events.length>0){
     html+=`<div class="card"><h3>🎲 随机事件</h3>`;
     events.forEach(e=>html+=`<div class="event-text"><strong>${e.name}</strong><br>${e.desc}<br><span style="color:var(--accent2)">${e.effect}</span></div>`);
@@ -5694,8 +6057,16 @@ function showMonthSummary(logs,matchResult,events,pressureMsg,offers){
     });
     html+=`</div>`;
   }
-  html+=`<div class="modal-buttons"><button class="btn-primary" onclick="closeModal()">确认</button></div>`;
+  html+=`<div class="modal-buttons"><button class="btn-primary" onclick="closeMonthSummary()">确认</button></div>`;
   showModal(html);
+}
+
+function closeMonthSummary(){
+  closeModal();
+  if(G&&G._retirePromptPending){
+    G._retirePromptPending=false;
+    suggestRetirement();
+  }
 }
 
 function showContractModal(offers){
@@ -5745,30 +6116,45 @@ function showSaveSlots(){
   }
   let html=`<h2>💾 存档管理</h2>`;
   if(autoInfo){
-    html+=`<div class="save-slot" onclick="loadGame('autosave')"><div><strong>自动存档</strong><br><span class="save-slot-info">${autoInfo.name} | ${autoInfo.year}年${autoInfo.month}月 | ${autoInfo.level}</span></div><span class="badge badge-green">读取</span></div>`;
+    html+=`<div class="save-slot" onclick="loadGame('autosave')"><div><strong>自动存档</strong><br><span class="save-slot-info">${autoInfo.name} | ${autoInfo.year}年${autoInfo.month}月 | ${autoInfo.level}</span></div><div><button class="btn-success btn-small" onclick="event.stopPropagation();loadGame('autosave')" style="margin-right:4px">读取</button><button class="btn-danger btn-small" onclick="event.stopPropagation();deleteSaveSlot('autosave')">删除</button></div></div>`;
   }
   saves.forEach(s=>{
     if(s.empty){
       html+=`<div class="save-slot" onclick="saveGame(${s.slot})"><div><strong>存档位 ${s.slot+1}</strong><br><span class="save-slot-info">空</span></div><span class="badge badge-blue">保存</span></div>`;
     } else {
-      html+=`<div class="save-slot"><div><strong>存档位 ${s.slot+1}</strong><br><span class="save-slot-info">${s.name} | ${s.year}年${s.month}月 | ${s.level}</span></div><div><button class="btn-success btn-small" onclick="loadGame(${s.slot})" style="margin-right:4px">读取</button><button class="btn-primary btn-small" onclick="saveGame(${s.slot})">覆盖</button></div></div>`;
+      html+=`<div class="save-slot"><div><strong>存档位 ${s.slot+1}</strong><br><span class="save-slot-info">${s.name} | ${s.year}年${s.month}月 | ${s.level}</span></div><div><button class="btn-success btn-small" onclick="loadGame(${s.slot})" style="margin-right:4px">读取</button><button class="btn-primary btn-small" onclick="saveGame(${s.slot})" style="margin-right:4px">覆盖</button><button class="btn-danger btn-small" onclick="deleteSaveSlot(${s.slot})">删除</button></div></div>`;
     }
   });
   html+=`<div class="modal-buttons"><button class="btn-secondary" onclick="closeModal()">关闭</button></div>`;
   showModal(html);
 }
 
+function deleteSaveSlot(slot){
+  if(!confirm('确定删除这个存档吗？删除后无法恢复。'))return;
+  const key=slot==='autosave'?'cs_career_autosave':'cs_career_save_'+slot;
+  localStorage.removeItem(key);
+  showToast('存档已删除','info');
+  showSaveSlots();
+}
+
 // ============================================================
 // SAVE / LOAD
 // ============================================================
-function saveGame(slot){
+function persistGame(silent){
+  if(!G)return;
+  try{localStorage.setItem('cs_career_autosave',JSON.stringify({...G,savedAt:new Date().toLocaleString()}));}catch(e){}
+  if(!silent)showToast('保存成功！','success');
+}
+function saveGame(slot,silent){
   if(!G){showToast('没有可保存的游戏','error');return}
   const key=slot==='autosave'?'cs_career_autosave':'cs_career_save_'+slot;
   const data={...G,savedAt:new Date().toLocaleString()};
   localStorage.setItem(key,JSON.stringify(data));
-  showToast('保存成功！','success');
-  if(document.getElementById('modal-overlay').classList.contains('active')){
-    showSaveSlots();
+  if(!silent){
+    showToast('保存成功！','success');
+    if(document.getElementById('modal-overlay').classList.contains('active')){
+      showSaveSlots();
+    }
   }
 }
 
@@ -5827,6 +6213,39 @@ function loadGame(slot){
     if(!G.rewrittenHistory)G.rewrittenHistory={};
     if(!G._eventCooldowns)G._eventCooldowns={};
     if(!G.qualifiedEvents)G.qualifiedEvents=[];
+    // v1.1 backward compatibility
+    G.version='1.1';
+    if(!G.monthPlan){
+      G.monthPlan={trainingIntensity:G.training.intensity||'moderate',restDays:G.life?G.life.rest:6,entertainment:G.life?G.life.entertainment:3,fitness:G.life?G.life.fitness:2,streamingCap:0,mapStrategy:'auto',bans:[],picks:[]};
+    }else{
+      if(G.monthPlan.streamingCap===undefined)G.monthPlan.streamingCap=0;
+      if(!G.monthPlan.mapStrategy)G.monthPlan.mapStrategy='auto';
+      if(!Array.isArray(G.monthPlan.bans))G.monthPlan.bans=[];
+      if(!Array.isArray(G.monthPlan.picks))G.monthPlan.picks=[];
+    }
+    if(G.career.totalMaps===undefined){
+      G.career.totalMaps=G.career.totalMatches||0;
+      G.career.ratingSum=(G.career.avgRating||0)*G.career.totalMaps;
+    }
+    if(G.career.ratingSum===undefined)G.career.ratingSum=0;
+    if(!Array.isArray(G.majorWins)){
+      G.majorWins=Array.isArray(G._majorWins)?[...G._majorWins]:[];
+    }else if(Array.isArray(G._majorWins)){
+      G._majorWins.forEach(k=>{if(!G.majorWins.includes(k))G.majorWins.push(k);});
+    }
+    G._majorWins=G.majorWins;
+    if(G.beatAstralis===undefined)G.beatAstralis=!!G._beatAstralis;
+    G._beatAstralis=G.beatAstralis;
+    G.qualifiedEvents=G.qualifiedEvents.map(q=>typeof q==='string'?{eventName:q,eventYear:G.year,eventMonth:G.month,teamId:G.team?G.team.id:null}:q);
+    if(!G.streaming)G.streaming={followers:0,avgViewers:0,totalDonations:0,monthlyIncome:0,active:false,attraction:0,matchCount:0};
+    if(G.streaming.active===undefined)G.streaming.active=false;
+    if(!Array.isArray(G._pendingOffers))G._pendingOffers=[];
+    delete G._forceSeriesWins;
+    delete G._forceQualified;
+    if(!G.monthSchedule||G.monthSchedule.year!==G.year||G.monthSchedule.month!==G.month){
+      G.monthSchedule=null;
+      ensureMonthSchedule(false);
+    }
     // Backward compatibility: optimization systems
     if(G.fame===undefined)G.fame=0;
     if(!G.injury)G.injury=null;
@@ -5837,6 +6256,10 @@ function loadGame(slot){
     if(!G.inheritedAchievements)G.inheritedAchievements=[];
     if(!G.inheritedHonors)G.inheritedHonors=null;
     if(!G.runNumber)G.runNumber=1;
+    // 读取时清理中断弹窗链可能遗留的运行时标志，避免污染新会话
+    G._advanceActive=false;
+    G._pendingAchPopups=[];
+    G._eventPopupCallback=null;
     closeModal();
     showScreen('game-screen');
     renderAll();
@@ -5882,7 +6305,9 @@ function init(){
   });
   // Close modal on overlay click
   document.getElementById('modal-overlay').addEventListener('click',e=>{
-    if(e.target===document.getElementById('modal-overlay'))closeModal();
+    if(e.target===document.getElementById('modal-overlay')){
+      if(G&&G._eventPopupCallback){closeEventPopup();}else{closeModal();}
+    }
   });
   // Init creation screen defaults
   initCreationScreen();
