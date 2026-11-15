@@ -2021,6 +2021,11 @@ function getPlayerPointsRank(){
   const i=l.findIndex(x=>x.isOwn);
   return {rank:i+1,total:l.length};
 }
+// 名次文案（第 68 轮）：999 是无队伍的哨兵值，不能直接显示成"第 999 名"
+function rankText(rank){
+  const n=parseInt(rank,10);
+  return (isFinite(n)&&n>0&&n<999)?`积分第 ${n} 名`:'无积分排名';
+}
 function rosterMapByYear(year){
   const rosters=getTeamRostersByYear(year||G.year);
   const map={};
@@ -2682,7 +2687,7 @@ function simulateEvent(event){
     qualified=G._forceQualified!==undefined?!!G._forceQualified:(!!pre||(event._invited&&event._invited.registered));
     if(pre)consumeQualification(event);
     if(!qualified){
-      G.eventLog.push({text:`${event.name} - 未获邀请（积分第 ${(getPlayerPointsRank()||{rank:0}).rank} 名）`,type:'negative',month:G.month,year:G.year});
+      G.eventLog.push({text:`${event.name} - 未获邀请（${rankText((getPlayerPointsRank()||{rank:0}).rank)}）`,type:'negative',month:G.month,year:G.year});
       event.result={qualified:false,stage:'unqualified'};
       G._forcePlayerLineup=false;
       return event.result;
@@ -3596,11 +3601,12 @@ function processHistoricalEvents(){
       effectDesc.push(`疲劳恢复+${effects.fatigueRecovery}%`);
     }
 
-    // 记录事件
+    // 记录事件（第 68 轮：无任何生效效果时不挂空括号）
     G._triggeredHistoricalEvents.push(evt.id);
     const statusLabel=status==='participant'?'[当事人]':status==='topTier'?'[一线]':'[旁观]';
+    const effTxt=effectDesc.length?` (${effectDesc.join(', ')})`:'';
     G.eventLog.push({
-      text:`📜 历史事件：${evt.name} ${statusLabel} - ${evt.desc} (${effectDesc.join(', ')})`,
+      text:`📜 历史事件：${evt.name} ${statusLabel} - ${evt.desc}${effTxt}`,
       type:effects.mental&&effects.mental>0?'positive':effects.mental&&effects.mental<0?'negative':'neutral',
       month:G.month,year:G.year
     });
@@ -4934,6 +4940,10 @@ function startGame(){
   if(CREATE_ATTRS.some(a=>creationAttrs[a]<CREATE_MIN||creationAttrs[a]>CREATE_MAX)){
     showToast('属性超出开局范围','error');return;
   }
+  // 第 68 轮：覆盖自动存档前必须确认（手动存档位不受影响；新周目流程由 startNewRun 自己走）
+  if(localStorage.getItem('cs_career_autosave')&&!(G&&G._pendingNewRun)){
+    if(!confirm('开始新游戏会覆盖当前的自动存档（手动存档位不受影响）。确定开始？'))return;
+  }
   // 传承保留：仅当从"开启新周目"进入（startNewRun 置 _pendingNewRun）时恢复继承数据
   const runCarry=(G&&G._pendingNewRun)?{runNumber:G.runNumber,inheritedHonors:G.inheritedHonors,inheritedAchievements:G.inheritedAchievements,fame:G.fame}:null;
   G=newGameState();
@@ -5478,7 +5488,7 @@ function ensureMonthSchedule(persist=true){
       if(ev.tier==='major'&&!inv.registered)pushMajorNarrative(ev); // 观赛战报（第 36 轮）
       if(ev.tier==='major'){
         if(inv.registered){note=inv.stage==='legends'?`🏆 Major 邀请：积分第 ${inv.rank} 名，直通传奇组`:`🏆 Major 邀请：预选赛出线，进入挑战组`;noteType='positive';}
-        else note=`📉 ${ev.name}：积分第 ${inv.rank} 名，未获邀请`;
+        else note=`📉 ${ev.name}：${rankText(inv.rank)}，未获邀请`;
       }else if(G.team){
         if(inv.registered){note=`🏆 ${ev.name}：积分第 ${inv.rank} 名，获得邀请（前 ${inv.cut}）`;noteType='positive';}
         else note=`📉 ${ev.name}：积分第 ${inv.rank} 名，未获邀请（需前 ${inv.cut}）`;
@@ -5541,6 +5551,8 @@ function toggleScheduleRegistration(id){
   const item=s.events.find(e=>e.id===id);
   if(!item||item.mandatory)return;
   if(item.locked){showToast('未获得该赛事邀请，无法报名','error');return;}
+  // 第 68 轮：没队伍报正式赛原本是静默无效（结算 stage:no_team），改成明确提示
+  if(!item.registered&&item.kind==='event'&&!G.team){showToast('没有战队无法报名正式赛事，先在「职业」页签下邀约','error');return;}
   if(!item.registered&&item.kind==='event'&&isTourLan(item)){ // 线下赛同时只能参加一场（第 60 轮）
     const dim=new Date(s.year,s.month,0).getDate();
     const r1=calRangeOf(item,dim);
@@ -5651,6 +5663,14 @@ function processMatches(){
     if(item.kind==='league'){
       const s=simulateLeagueItem(item);
       recordSeries(s,monthly);
+      // 天梯/联赛独立账本（第 68 轮）：不并入正式战绩，但月结算要能看见
+      if(s&&s.matchType==='ladder'){
+        monthly.ladder=monthly.ladder||{series:0,wins:0,losses:0,maps:0,ratingSum:0};
+        monthly.ladder.series++;
+        if(s.win)monthly.ladder.wins++;else monthly.ladder.losses++;
+        monthly.ladder.maps+=(s.maps?s.maps.length:0);
+        monthly.ladder.ratingSum+=(isFinite(s.ratingSum)?s.ratingSum:0);
+      }
       item.result={win:s.win,score:s.score,opponent:s.opponent,rating:s.avgRating,maps:s.maps};
       item.done=true;
     }else{
@@ -5700,7 +5720,8 @@ function processMatches(){
   return {
     matches:monthly.seriesList,wins:monthly.wins,losses:monthly.losses,
     avgRating:parseFloat(avg.toFixed(2)),mapCount:monthly.mapCount,
-    seriesCount:monthly.seriesList.length,events:monthly.events,mvps:monthly.mvps||0
+    seriesCount:monthly.seriesList.length,events:monthly.events,mvps:monthly.mvps||0,
+    ladder:monthly.ladder?{...monthly.ladder,avgRating:parseFloat((monthly.ladder.maps?monthly.ladder.ratingSum/monthly.ladder.maps:0).toFixed(2))}:null
   };
 }
 
@@ -5749,6 +5770,8 @@ function generateTeamOffers(){
   const offers=[];
   const recent=getRecentAvgRating(3,true);
   const level=G.careerLevel;
+  // 第 68 轮：三线队看天梯战绩（无队伍时唯一可用依据）；二线队及以上只认正式比赛
+  const ladderRecentAll=getRecentLadderAvgRating(5);
   // 在队中不再生成本队报价（第 47 轮）；合同到期成为自由人后仍可收到老东家报价
   const yearTeams=getTeamsDBByYear(G.year).filter(t=>!G.team||t.id!==G.team.id);
   // 本层月数：刚升档时旧档位的碾压分不能直接兑换高档邀约
@@ -5764,8 +5787,8 @@ function generateTeamOffers(){
         offers.push(makeOffer(t,rand(400,1200),rand(6,12)));
       }
     }
-    // tier2 offer: >1.05 (dominating amateur level) — 需在业余层打过至少 2 个月
-    if(ladderRecent>1.10&&(G.career.ladderMatches||0)>=8&&Math.random()<0.3){ // 天梯碾压吸引二线队（第 61 轮改天梯口径）
+    // tier2 offer: >1.10 — 二线队及以上只看正式比赛（第 68 轮用户口径，不再用天梯口径）
+    if(recent>1.10&&G.career.totalMatches>=8&&Math.random()<0.3){
       const tier2=yearTeams.filter(t=>t.tier==='tier2').filter(teamNeedsRole); // 转会真实性（第 40 轮）
       if(tier2.length>0){
         const t=pickOfferTeam(tier2);
@@ -5773,9 +5796,17 @@ function generateTeamOffers(){
       }
     }
   }
-  // SemiPro: tier2 offers for decent performance, tier1 for dominating
+  // SemiPro: 三线看天梯，二线起只认正式比赛（第 68 轮用户口径）
   else if(level==='semiPro'){
-    // tier2 offer: >0.95 (maintaining decent performance at semiPro level)
+    // tier3 offer：无队时看天梯（天梯是唯一能拿到的依据）
+    if(!G.team&&ladderRecentAll>0.95&&Math.random()<0.4){
+      const tier3=yearTeams.filter(t=>t.tier==='tier3').filter(teamNeedsRole);
+      if(tier3.length>0){
+        const t=pickOfferTeam(tier3);
+        offers.push(makeOffer(t,rand(400,1200),rand(6,12)));
+      }
+    }
+    // tier2 offer: >0.95（只看正式战绩）
     if(recent>0.95&&Math.random()<0.4){
       const tier2=yearTeams.filter(t=>t.tier==='tier2').filter(teamNeedsRole); // 转会真实性（第 40 轮）
       if(tier2.length>0){
@@ -5820,13 +5851,15 @@ function generateTeamOffers(){
     }
   }
   // Safety net: guarantee one reasonable offer after 3 months without any (amateur) or 6 months (others)
-  if(offers.length===0&&G.career.totalMatches>0){
+  // 第 68 轮：天梯满 6 场也算"有表现"，否则半职业无队时保底永远不触发
+  if(offers.length===0&&(G.career.totalMatches>0||(G.career.ladderMatches||0)>=6)){
     if(!G._lastOfferMonth)G._lastOfferMonth=G.year*12+G.month;
     const monthsSince=(G.year*12+G.month)-G._lastOfferMonth;
     const safetyThreshold=level==='amateur'?3:6;
     if(monthsSince>=safetyThreshold){
       G._lastOfferMonth=G.year*12+G.month;
-      if(level==='amateur'){
+      if(level==='amateur'||!G.team){
+        // 保底：无队伍一律从三线队给（三线看天梯，二线起只看正式比赛）
         const tier3=yearTeams.filter(t=>t.tier==='tier3');
         const tier2=yearTeams.filter(t=>t.tier==='tier2');
         const need3=tier3.filter(teamNeedsRole); // 保底邀约优先有空缺队伍，否则兜底（第 40 轮）
@@ -6438,6 +6471,10 @@ function advanceMonth(){
   const matchResult=processMatches();
   if(matchResult.mapCount>0){
     logs.push(`比赛：${matchResult.seriesCount} 个系列赛，${matchResult.wins}胜${matchResult.losses}负，地图均分Rating ${matchResult.avgRating}（${matchResult.mapCount}张地图）`);
+  }else if(matchResult.ladder&&matchResult.ladder.series>0){
+    // 第 68 轮：只打天梯/联赛时不再谎报"无出场记录"
+    const L=matchResult.ladder;
+    logs.push(`比赛：天梯/联赛 ${L.series} 场，${L.wins}胜${L.losses}负，均分Rating ${L.avgRating}（不计入正式战绩）`);
   }else{
     logs.push('比赛：本月无出场记录');
   }
@@ -7586,6 +7623,24 @@ function showMonthSummary(logs,matchResult,events,pressureMsg,offers,period){
   html+=`<div class="stat-row"><span class="stat-label">出场地图</span><span class="stat-value">${matchResult.mapCount||0} 张</span></div>`;
   html+=`<div class="stat-row"><span class="stat-label">体力消耗</span><span class="stat-value">${Math.round(G.staminaConsumed)} / 上限 ${Math.round(G.staminaMax)}</span></div>`;
   html+=`</div>`;
+  // 天梯战绩（第 68 轮）：天梯单独成表——三线队看这栏，二线及以上只看上面的比赛数据
+  const ladderRep=matchResult.ladder;
+  if(ladderRep&&ladderRep.series>0){
+    const rl2=getRatingLabel(ladderRep.avgRating);
+    const ladAll=G.career.ladderRating||0;
+    const ladN=G.career.ladderMatches||0;
+    const ladW=G.career.ladderWins||0;
+    const ladL=G.career.ladderLosses||0;
+    const recent5=getRecentLadderAvgRating(5);
+    const scout=recent5>0.95;
+    html+=`<div class="card"><h3>🎯 天梯战绩</h3>`;
+    html+=`<div class="stat-row"><span class="stat-label">本月天梯</span><span class="stat-value">${ladderRep.series} 场（${ladderRep.wins}胜 ${ladderRep.losses}负）</span></div>`;
+    html+=`<div class="stat-row"><span class="stat-label">本月均分Rating</span><span class="stat-value" style="color:${rl2.color}">${ladderRep.avgRating} (${rl2.label})</span></div>`;
+    html+=`<div class="stat-row"><span class="stat-label">累计天梯</span><span class="stat-value">${ladN} 场（${ladW}胜 ${ladL}负）· 均分 ${ladAll}</span></div>`;
+    html+=`<div class="stat-row"><span class="stat-label">近 5 场天梯均分</span><span class="stat-value" style="color:${scout?'var(--green)':'var(--text2)'}">${recent5.toFixed(2)}${scout?' · 三线队球探在关注':''}</span></div>`;
+    html+=`<div style="font-size:12px;color:var(--text2);margin-top:6px">天梯不计入正式战绩：三线队会看天梯表现，二线队及以上只看正式比赛数据。</div>`;
+    html+=`</div>`;
+  }
   if(matchResult.events&&matchResult.events.length>0){
     html+=`<div class="card"><h3>🏆 赛事战报</h3>`;
     matchResult.events.forEach(ev=>{
@@ -7854,6 +7909,9 @@ function loadAndContinue(){
 function confirmQuit(){
   if(confirm('确定返回主页？游戏将自动保存。')){
     saveGame('autosave');
+    // 第 68 轮：存档后必须把「继续游戏」露出来，否则回主页后只能绕存档管理读档
+    const cont=document.getElementById('btn-continue');
+    if(cont)cont.style.display='block';
     showScreen('home-screen');
   }
 }
