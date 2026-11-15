@@ -5,7 +5,6 @@
 ## 🎮 在线试玩
 
 - **[CS 职业人生模拟器](https://xiaolinixiuzhi.github.io/minigames/cs-career-simulator.html)** — 从路人到职业选手：天赋分配、天梯磨炼、战队邀约、赛事奖金、直播涨粉，一局走完十年职业生涯。
-- **[高考模拟器](https://xiaolinixiuzhi.github.io/minigames/gaokao-simulator.html)** — 三年高中，一次次选择：刷题还是休息、竞赛还是高考，看看最后落在哪张录取通知上。
 
 合集首页：https://xiaolinixiuzhi.github.io/minigames/
 
@@ -15,7 +14,6 @@
 |---|---|
 | `index.html` | 合集首页，带 SEO 元信息与结构化数据 |
 | `cs-career-simulator.html` | CS 职业人生模拟器（单文件，约 500 KB） |
-| `gaokao-simulator.html` | 高考模拟器（单文件，约 170 KB） |
 | `robots.txt` / `sitemap.xml` | 搜索引擎抓取配置 |
 
 ## 🛠 本地运行
@@ -30,7 +28,7 @@ python -m http.server 8000   # 或者直接双击 index.html
 
 ## 📌 关键词
 
-CS 职业人生模拟器 · 职业选手模拟器 · 电竞生涯模拟 · 高考模拟器 · 文字模拟游戏 · 网页小游戏 · HTML5 小游戏 · 单文件游戏 · 模拟经营
+CS 职业人生模拟器 · 职业选手模拟器 · 电竞生涯模拟 · 网页小游戏 · HTML5 小游戏 · 单文件游戏 · 模拟经营
 
 ## 说明
 
